@@ -9,4 +9,5 @@
 *\.swp
 *\.tab\.[ch]
 lex\.yy\.c
-src/spawk/test[1-9]\.out
+src/spawk/test[0-9]\.out
+src/spawk/test[0-9]\.err
