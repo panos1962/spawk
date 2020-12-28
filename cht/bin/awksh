@@ -1,0 +1,72 @@
+#!/bin/sh
+#
+#	@(#) awksh.sh 22/11/2006
+#
+#	Copyright (C) 2006 Panos Papadopoulos
+#		All Rights Reserved.
+#
+
+usage_msg="[-p] [directory]"
+. set_progname
+
+print=
+
+while getopts ":p" arg
+do
+	case "${arg}" in
+	p)
+		print=yes
+		;;
+	\?)
+		. illegal_option
+		;;
+	esac
+done
+. shift_opts
+
+last=${HOME}/.cht_awklast
+case $# in
+0)
+	awk=`cat ${last} 2>/dev/null`
+	[ -z "${awk}" ] && usage
+	;;
+1)
+	awk="${1}"
+	;;
+*)
+	usage
+	;;
+esac
+
+case "${awk}" in
+/*)
+	dir="${awk}"
+	;;
+*)
+	dir=`find /cht/awk -type d -print | awk -v pat="${awk}" '{
+		if (($0 ~ "/" pat "/") || ($0 ~ "/" pat "$")) {
+		print $0
+		exit(0)
+	}
+}'`
+	;;
+esac
+
+[ -n "${dir}" ] || exit 2
+[ -d "${dir}" ] || dir="/cht/lib/awk/${awk}"
+[ -d "${dir}" ] || dir="/cht/lib/awk/*/${awk}"
+[ -d "${dir}" ] || {
+	echo "${progname}: ${awk}: directory not found" >&2
+	exit 2
+}
+
+cd "${dir}" || exit 2
+dir=`pwd`
+echo "Working Directory: ${dir}" >&2
+echo ${dir} >${last}
+if [ -n "${print}" ]; then
+	echo "${dir}"
+	exit 0
+fi
+
+PS1="awk> " exec /bin/sh

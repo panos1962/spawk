@@ -1,0 +1,14 @@
+spawk/database/chat/create.awk
+spawk/database/chat/drop.awk
+spawk/database/chat/Makefile
+spawk/database/chat/populate.awk
+spawk/database/chat/relation.data
+spawk/database/chat/schema.sql
+spawk/database/chat/user.data
+spawk/LICENSE.txt
+spawk/Makefile
+spawk/src/spawk
+spawk/src/spawk/Makefile
+spawk/src/spawk/spawk.c
+spawk/src/spawk/test1.awk
+spawk/src/spawk/test2.awk

@@ -1,0 +1,19 @@
+#!/bin/awk
+
+{
+	if (cht_skip > NF)
+		NF = 0
+	else if (cht_skip > 0)
+		cht_skip_fields()
+}
+
+function cht_skip_fields(		ofs, i) {
+	ofs = OFS
+	OFS = (FS ? FS : "|")
+	for (i = cht_skip + 1; i <= NF; i++)
+		$(i - cht_skip) = $i
+
+	NF -= cht_skip
+	$0 = $0
+	OFS = ofs
+}

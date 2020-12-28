@@ -1,0 +1,904 @@
+#!/bin/awk
+
+#
+# Αυτό το κομμάτι του κώδικα είναι το αρχικό τμήμα του παραγόμενου
+# awk script. Υπάρχει `BEGIN' section στο οποίο αρχικοποιούνται
+# διάφορα global αντικείμενα. Κατόπιν ορίζονται διάφορες functions
+# και ακολουθεί `END' με εργασίες που πρέπει να γίνουν κατά το τέλος
+# του report.
+#
+
+BEGIN {
+	if (!cht_rpt_sort_max)		# internal sort count limit
+	cht_rpt_sort_max = 300
+
+	cht_rpt = 1			# shows report mode in awk
+	cht_rpt_sorted += 0		# if true, input is presorted
+	cht_rpt_sort_pipe = 0		# 1 on external sort pipe
+	cht_rpt_sort_command = ""	# external sort command
+	cht_rpt_input_count = 0		# input fields' count
+	cht_rpt_sort_count = 0		# sort fields' count
+	cht_rpt_data_line = -3		# data set lines' counter
+	cht_rpt_input_file = ""		# input file name
+	cht_rpt_input_line = 0		# input line per input file
+	cht_rpt_report_active = 0	# 1 means report in progress
+	cht_rpt_data_set = 0		# 1 means data set processing
+	cht_rpt_subreport = 0		# 1 means this is a subreport
+	cht_rpt_accepted_data = 0	# counts data sets with at least
+					# one accepted input record
+
+	delete cht_rpt_input_field	# input fields' names
+	delete cht_rpt_input_type	# input fields' data types
+	delete cht_rpt_sort_field	# sort fields' names
+	delete cht_rpt_sort_type	# sort fields' data types
+	delete cht_rpt_sort_order	# sort fields' order kinds
+	delete cht_rpt_sort_value	# sort record
+	delete cht_rpt_sort_line	# in core sort lines' array
+	delete cht_rpt_new_value	# before/after check
+	delete cht_rpt_ba_status	# before/after fields' status
+}
+
+#
+# Η function `cht_rpt_before_report' καλείται σε πολλά σημεία και
+# κύριο στόχο έχει να τρέξει τον `before report' κώδικα όταν αυτό
+# κρίνεται απαραίτητο. Ο `before report' κώδικας πρέπει να εκτελείται
+# για κάθε data set είτε έχω input data είτε όχι. Για λόγους πύκνωσης
+# του κώδικα η function επιστρέφει το τρέχον data set line count
+# (`cht_rpt_data_line') που όταν δεν είναι θετικό δείχνει την κατάσταση
+# στο τρέχον data set:
+#
+# -3: Αρχική κατάσταση (πριν το πρώτο data set).
+# -2: Αρχή νέου data set, δεν έχει τρέξει ο `before report' κώδικας.
+# -1: Αρχή νέου data set, έχει τρέξει ο `before report' κώδικας,
+#     δεν έχει τρέξει ο `before data' κώδικας.
+#  0: Αρχή νέου data set, έχει τρέξει ο `before report' κώδικας
+#     και ο `before data' κώδικας.
+#
+
+function cht_rpt_before_report() {
+print "BEFORE REPORT"
+	# Αν τώρα είναι η πρώτη φορά που κλήθηκε η παρούσα
+	# function στο τρέχον data set πρέπει να καθαρίσω το
+	# array προηγουμένων τιμών `cht_rpt_sort_value' όπως
+	# επίσης και το before/after fields' status array
+	# `cht_rpt_ba_status'.
+
+	if (!cht_rpt_report_active) {
+		delete cht_rpt_sort_value
+		delete cht_rpt_ba_status
+		cht_rpt_before_report_code()
+		cht_rpt_report_active = 1
+	}
+
+	return(cht_rpt_data_line)
+}
+
+#
+# Η function `cht_rpt_sort_compare' είναι εσωτερική και χρησιμοποιείται
+# αποκλειστικά και μόνο στην εσωτερική ταξινόμηση μέσω της function
+# `cht_rpt_sort_in_core'.
+#
+
+function cht_rpt_sort_compare(xx, yy,		n, x, y, i) {
+print "COMPARE"
+	if (((n = split(xx, x, "|")) != split(yy, y, "|")) ||
+		(n < cht_rpt_sort_count)) {
+		cht_errmsg("sort comparison internal error")
+		exit(2)
+	}
+
+	for (i = 1; i <= cht_rpt_sort_count; i++) {
+		if (!cht_rpt_sort_order[i])
+			continue
+
+		# Όλοι οι data types εκτός από τα αλφαριθμητικά
+		# είναι τώρα αριθμητικοί καθώς έχω μετατρέψει τις
+		# ημερομηνίες και τις ώρες σε internal format.
+		# Επομένως κάνω αριθμητικές συγκρίσεις για όλα
+		# τα πεδία εκτός από τα αλφαριθμητικά.
+
+		if (cht_rpt_sort_type[i] != 2) {
+			if (x[i] + 0 > y[i] + 0)
+				return(cht_rpt_sort_order[i])
+
+			if (x[i] + 0 < y[i] + 0)
+				return(-cht_rpt_sort_order[i])
+
+			continue
+		}
+
+		if (x[i] > y[i])
+			return(cht_rpt_sort_order[i])
+
+		if (x[i] < y[i])
+			return(-cht_rpt_sort_order[i])
+	}
+
+	return(0)
+}
+
+#
+# Όταν έχω λίγα data lines για sort, τότε πιθανώς δεν έχει ανοίξει
+# εξωτερικό sort process pipe, οπότε ταξινομώ τα records εσωτερικά.
+# Τα records βρίσκονται στο global array `cht_rpt_sort_line' και
+# το πλήθος τους είναι όσο και το data set count για το τρέχον
+# data set (`cht_rpt_data_line'). Η εσωτερική ταξινόμηση γίνεται
+# με τον αλγόριθμο quick sort (Kernighan & Ritchie).
+#
+
+function cht_rpt_sort_in_core(from, to,		buf, meson, i) {
+print "SORT IN CORE"
+	if (from >= to)
+		return
+
+	# Ελέγχω και την περίπτωση της λίστας με δύο μόνο στοιχεία
+	# ώστε να γλιτώσω μια ακόμη recursive κλήση.
+
+	if (to - from < 2) {
+		if (cht_rpt_sort_compare(cht_rpt_sort_line[from], \
+			cht_rpt_sort_line[to]) > 0) {
+			buf = cht_rpt_sort_line[from]
+			cht_rpt_sort_line[from] = cht_rpt_sort_line[to]
+			cht_rpt_sort_line[to] = buf
+		}
+
+		return
+	}
+
+	if ((meson = int((to + from) / 2)) > from) {
+		buf = cht_rpt_sort_line[from]
+		cht_rpt_sort_line[from] = cht_rpt_sort_line[meson]
+		cht_rpt_sort_line[meson] = buf
+	}
+
+	meson = from
+	for (i = from + 1; i <= to; i++) {
+		if (cht_rpt_sort_compare(cht_rpt_sort_line[i], \
+			cht_rpt_sort_line[from]) < 0) {
+			buf = cht_rpt_sort_line[i]
+			cht_rpt_sort_line[i] = \
+				cht_rpt_sort_line[++meson]
+			cht_rpt_sort_line[meson] = buf
+		}
+	}
+
+	if (meson > from) {
+		buf = cht_rpt_sort_line[from]
+		cht_rpt_sort_line[from] = cht_rpt_sort_line[meson]
+		cht_rpt_sort_line[meson] = buf
+	}
+
+	cht_rpt_sort_in_core(from, meson - 1)
+	cht_rpt_sort_in_core(meson + 1, to)
+}
+
+#
+# Η function `cht_rpt_int2ext' μετατρέπει την τιμή ενός sort field
+# από εσωτερικό format σε κανονικό. Η function παίρνει τις τιμές των
+# πεδίων από το array `cht_rpt_new_value' στο οποίο τοποθετούνται κατά
+# τη διαδικασία παραλαβής του δευτερογενούς (ταξινομημένου) input.
+#
+
+function cht_rpt_int2ext(i,		dmyhm) {
+	if (cht_rpt_new_value[i] == "")
+		return(cht_rpt_new_value[i])
+
+	if (cht_rpt_sort_type[i] == 2)		# CHARACTER
+		return(cht_rpt_new_value[i])
+
+	if (cht_rpt_sort_type[i] == 1)		# NUMERIC
+		return(cht_rpt_new_value[i] + 0)
+
+	if (cht_rpt_sort_type[i] == 3) { 	# DATE
+		dmyhm[3] = substr(cht_rpt_new_value[i], 1, 4) + 0
+		dmyhm[2] = substr(cht_rpt_new_value[i], 5, 2) + 0
+		dmyhm[1] = substr(cht_rpt_new_value[i], 7, 2) + 0
+		return(cht_rpt_new_value[i] = cht_dmytodt(dmyhm))
+	}
+
+	if (cht_rpt_sort_type[i] == 4)		# FLOAT
+		return(cht_rpt_new_value[i] + 0.0)
+
+	if (cht_rpt_sort_type[i] == 5) {	# TIME
+		dmyhm[1] = substr(cht_rpt_new_value[i], 1, 2) + 0
+		dmyhm[2] = substr(cht_rpt_new_value[i], 3, 2) + 0
+		return(cht_rpt_new_value[i] = cht_hmtotm(dmyhm))
+	}
+
+
+	cht_rpt_input_error("int2ext: " cht_rpt_new_value[i] \
+		": invalid type for " \
+		"field `" cht_rpt_sort_field[i] "'")
+	return("")
+}
+
+#
+# Είμαστε στη φάση που έχουμε παραλάβει ταξινομημένο input record και
+# θέτουμε τις τιμές των πεδίων στο array `cht_rpt_new_value'. Κατόπιν,
+# ελέγχω το `cht_rpt_ba_status' όλων των πεδίων που μετέχουν πραγματικά
+# στο sort. Αν το status για κάποιο πεδίο είναι μηδέν (η ανύπαρκτο)
+# σημαίνει ότι έχουμε φρέσκο input, επομένως θέτω το status όλων των
+# επόμενων sort fields σε 3. Αυτό θα σημάνει εκτέλεση των αντίστοιχων
+# `before' awk codes σε επόμενη φάση αποφεύγοντας όμως την εκτέλεση
+# των `after' awk codes (εφόσον μιλάμε για νέο data set). Εφόσον δεν
+# βρέθηκε πεδίο με μηδενικό (ή ανύπαρκτο status), σημαίνει ότι είμαι
+# σε κανονική ροή και διαχειρίζομαι ένα κοινό, δευτερογενές input
+# record. Σ'αυτήν την περίπτωση ελέγχω μήπως το πεδίο άλλαξε τιμή
+# συγκρίνοντας με την αντίστοιχη τιμή στο array `cht_rpt_sort_value'
+# το οποίο περιέχει τις τιμές των πεδίων του προηγούμενου record.
+# Αν υπάρχει αλλαγή, θέτω όλα το status για το πεδίο και για όλα τα
+# επόμενα σε 2. Αυτό θα προκαλέσει σε επόμενη φάση εκτέλεση των
+# `after' και των `before' awk codes γι'αυτά τα πεδία. Αν δεν άλλαξε
+# το πεδίο θέτω το αντίστοιχο status σε 1.
+
+function cht_rpt_ba_check(		i, change) {
+print "BA_CHECK"
+	for (i = 1; i <= cht_rpt_sort_count; i++) {
+		cht_rpt_new_value[i] = cht_rpt_int2ext(i)
+		if (!cht_rpt_sort_order[i])
+			continue
+
+		# Ελέγχω αν είμαι στην αρχή νέου data set οπότε θέτω
+		# το status για όλα τα πεδία σε 3.
+
+		if (cht_rpt_ba_status[i] + 0 == 0)
+			change = 3
+
+		if (change) {
+			cht_rpt_ba_status[i] = change
+			continue
+		}
+
+		# Αν υπάρχει αλλαγή στην τιμή κάποιο sort field θέτω
+		# το status του πεδίου, και όλων των επομένων, σε 2.
+
+		if (cht_rpt_new_value[i] != cht_rpt_sort_value[i]) {
+			cht_rpt_ba_status[i] = 2
+			change = 2
+			continue
+		}
+
+		# Κανονική ροή, το πεδίο δεν έχει αλλάξει τιμή.
+
+		cht_rpt_ba_status[i] = 1
+	}
+}
+
+#
+# Με τη function `cht_rpt_process_data' διαχειριζόμαστε κάθε γραμμή
+# του input (όταν υπάρχει sort εννοείται το δευτερογενές input),
+# εφόσον βέβαια υπάρχουν sort fields. Όταν δεν υπάρχουν sort fields
+# τρέχουμε απευθείας τον `detail' κώδικα μέσα από το default awk action.
+# Εδώ τρέχουν όλα τα `before/after' που αφορούν σε sort fields
+# εφόσον έχουμε αλλαγή στην τιμή των εν λόγω sort fields και ο
+# `detail' κώδικας για κάθε γραμμή του input.
+#
+
+function cht_rpt_process_data(rec,		nf) {
+print "PROCESS DATA"
+	# Η `cht_rpt_process_data' καλείται σε δύο σημεία:
+	# Είτε μετά από sort οπότε καλείται με παράμετρο το
+	# array τιμών πεδίων δευτερογενούς input, είτε χωρίς
+	# παραμέτρους (sorted input) οπότε πρέπει να επαναφέρω
+	# τις τιμές των πεδίων στις τιμές που είχαν στο προηγούμενο
+	# record (`cht_rpt_sort_value').
+
+	if (rec != "") {
+		if ((nf = split(rec, cht_rpt_new_value, "|")) < 3)
+			cht_fatal("process_data: internal error")
+
+		# Έχω φροντίσει μέσα από τη `cht_rpt_sort_check'
+		# να βάλω στις δύο τελευταίες θέσεις του sort
+		# record το input file name και το input line
+		# number. Διαβάζοντας το δευτερογενές (ταξινομημένο)
+		# input τα επαναθέτω ώστε τυχόν μηνύματα λάθους να
+		# τυπώνονται σωστά.
+
+		cht_rpt_input_file = cht_rpt_new_value[nf - 1]
+		cht_rpt_input_line = cht_rpt_new_value[nf]
+	}
+	else
+		cht_rpt_reset_input(cht_rpt_sort_value)
+
+	cht_rpt_ba_check()
+	cht_rpt_after_check(2)
+	cht_rpt_reset_input(cht_rpt_new_value)
+	cht_rpt_before_check()
+	cht_rpt_detail_code()
+	cht_rpt_set_sort()
+}
+
+#
+# Η function `cht_rpt_sort_receive' καλείται με το τέλος κάθε
+# data set (εφόσον υπάρχει sort section) και είτε παραλαμβάνει
+# αποτελέσματα από εξωτερικό sort process pipe, εφόσον έχει
+# δημιουργηθεί τέτοιο pipe, είτε "παραλαμβάνει" αποτελέσματα
+# (records) από το το εσωτερικό sort array (`cht_rpt_sort_line')
+# εφόσον η ταξινόμηση θα γίνει τώρα εσωτερικά.
+#
+
+function cht_rpt_sort_receive(		i) {
+print "SORT_RECEIVE"
+	if (cht_rpt_sorted)
+		return;
+
+	if (cht_rpt_data_line <= 0)
+		return
+
+	# Αφού υπάρχουν data στο τρέχον data set και εφόσον μόλις
+	# έχει γίνει το sort, είναι η κατάλληλη στιγμή να εκτελεστεί
+	# ο `after sort' κώδικας.
+
+	cht_rpt_after_sort_code()
+
+	# Αν έχω external sort κλείνω το sort process pipe και
+	# παραλαμβάνω τα (ταξινομημένα) αποτελέσματα.
+
+	if (cht_rpt_sort_pipe) {
+		close(cht_rpt_sort_command, "to")
+		while ((i = (cht_rpt_sort_command |& getline \
+			cht_rpt_sort_line[0])) > 0)
+			cht_rpt_process_data(cht_rpt_sort_line[0])
+
+		close(cht_rpt_sort_command)
+		cht_rpt_sort_pipe = 0
+		return
+	}
+
+	# Η ταξινόμηση έγινε εσωτερικά και τα records βρίσκονται
+	# (ταξινομημένα) στο array `cht_rpt_sort_line'.
+
+	cht_rpt_sort_in_core(1, cht_rpt_data_line)
+	for (i = 1; i <= cht_rpt_data_line; i++)
+		cht_rpt_process_data(cht_rpt_sort_line[i])
+
+	# Δεν ξέρω αν είναι απαραίτητο να διαγράφω το array
+	# `cht_rpt_sort_line' μετά το processing των ταξινομημένων
+	# data. Ο μόνο λόγος είναι για να απελευθερώσω τη μνήμη
+	# αλλά είναι πολύ πιθανό να ξαναγεμίσει το array, οπότε
+	# μάλλον είναι περιττό.
+	
+	# delete cht_rpt_sort_line
+}
+
+#
+# Η function `cht_rpt_end_of_data' καλείται στο τέλος κάθε data set
+# με κύριο στόχο την εκτέλεση του `after data' κώδικα. Παρεμπιπτόντως,
+# ελέγχει μήπως χρειάζεται να τρέξει και ο `before report' κώδικας
+# εφόσον είναι χρεωστούμενος. Η function επιστρέφει μη μηδενική τιμή
+# για πύκνωση του κώδικα.
+#
+
+function cht_rpt_end_of_data() {
+	# Ελέγχω μήπως έχω τέλος data set (ή τέλος δεδομένων γενικά)
+	# οπότε πρέπει να εκτελέσω όλα τα `after' codes για τα πεδία
+	# που έχου before/after status 1. Μετά εκτελώ τον `after data'
+	# awk code (εφόσον υπάρχει). Βεβαίως φροντίζω εδώ να θέσω το
+	# before/after status για όλα τα πεδία σε 0 κάνοντας delete
+	# το array `cht_rpt_ba_status'.
+
+	if (cht_rpt_before_report() > 0) {
+		if(cht_rpt_sort_count) {
+			cht_rpt_sort_receive()
+			cht_rpt_after_check(1)
+			delete cht_rpt_ba_status
+		}
+
+		cht_rpt_after_data_code()
+		cht_rpt_data_line = -1
+	}
+
+	# Τρέχω τώρα τον `after report' awk κώδικα (εφόσον υπάρχει)
+	# και αμέσως μετά κάνω κάτι πολύ σημαντικό: Αν είμαι σε data
+	# set mode, πράγμα που σημαίνει ότι έχω ξεκινήσει ως subreport
+	# από άλλο awkrpt process, επιστρέφω στον καλούντα awkrpt ένα
+	# end-of-data.
+
+	cht_rpt_after_report_code()
+	cht_rpt_data_set = 0
+	cht_rpt_report_active = 0
+	return(1)
+}
+
+function cht_rpt_errmsg(msg) {
+	printf (cht_progname != "" ? \
+		cht_progname : "awkrpt") >cht_error_file
+
+	if (cht_rpt_script_name != "")
+		printf "@" cht_rpt_script_name >cht_error_file
+
+	printf ": " >cht_error_file
+	if (msg != "") {
+		print msg >cht_error_file
+		fflush(cht_error_file)
+	}
+
+	return(1)
+}
+
+function cht_rpt_input_error(msg) {
+	cht_rpt_errmsg()
+	if (cht_rpt_input_file != "")
+		printf cht_rpt_input_file ": " >cht_error_file
+
+	printf "line: %d: ", cht_rpt_input_line >cht_error_file
+	if (msg != "") {
+		print msg >cht_error_file
+		fflush(cht_error_file)
+	}
+
+	return(1)
+}
+
+function cht_rpt_input_fatal(msg) {
+	cht_rpt_input_error(msg ? msg : "fatal error")
+	cht_rpt_cancel()
+	cht_cleanup()
+	exit(2)
+}
+
+function cht_rpt_check_types(		i, ok, errs) {
+	for (i in cht_rpt_input_type) {
+		if (!cht_rpt_input_type[i]) {
+			cht_rpt_errmsg(cht_rpt_input_field[i] \
+				": udefined input data type")
+			ok[cht_rpt_input_field[i]]
+			errs++
+		}
+	}
+
+	for (i in cht_rpt_sort_type) {
+		if (!cht_rpt_sort_type[i]) {
+			if (!(cht_rpt_sort_field[i] in ok))
+				cht_rpt_errmsg(cht_rpt_sort_field[i] \
+					": udefined sort data type")
+
+			errs++
+		}
+	}
+
+	cht_abort(errs)
+}
+
+#
+# Ακολουθεί μια από τις σημαντικότερες functions διαχείρισης του
+# input. Πρόκειται για την function `cht_rpt_check_data' η οποία
+# καλείται για κάθε input record και ελέγχει αν πρόκειται για
+# control data (end-of-data mark) και, εφόσον πρόκειται για data
+# record, προχωράει στον έλεγχο της δομής και της φύσης του record.
+# Πιο συγκεκριμένα, πρώτα ελέγχεται αν το record περιέχει το ελάχιστο
+# απαιτούμενο πλήθος πεδίων (όπως καθορίζεται στο `input' section)
+# και κατόπιν ελέγχονται, ένα-ένα, τα πεδία όσον αφορά στην ορθότητα
+# των τιμών τους· εδώ στηλιτεύονται λάθος τιμές (αριθμοί, ημερομηνίες
+# κλπ) και απορρίπτονται τα records που περιέχουν λανθασμένες τιμές.
+#
+
+function cht_rpt_check_data(		fname, offset) {
+	if ($1 == cht_sql_bod)
+		cht_rpt_subreport = 1
+	else if ($0 == cht_sql_eod)
+		cht_rpt_subreport = 2
+	else
+		cht_rpt_subreport = 0
+
+	# Ο έλεγχος παρακάτω αποτελεί πλεονασμό καθώς η
+	# `cht_rpt_report_active' ελέγχεται και μέσα στην
+	# `cht_rpt_before_report' function. Παρόλα αυτά,
+	# επειδή η `cht_rpt_check_data' καλείται για κάθε
+	# input line, κάνουμε απευθείας τον έλεγχο ώστε
+	# να γλιτώσουμε αρκετές άγονες κλήσεις στη function
+	# `cht_rpt_before_report'.
+
+	if (!cht_rpt_report_active)
+		cht_rpt_before_report()
+
+	# Ελέγχω τώρα το input line. Αν έχω μια γραμμή που είναι
+	# ακριβώς ένα end-of-data mark και τίποτε άλλο (έχει τεθεί
+	# παραπάνω η flag `cht_rpt_subreport' σε 2), τότε πρόκειται
+	# για τέλος data set που μου έρχεται από το πρωτεύον report.
+
+	if (cht_rpt_subreport == 2) {
+		cht_rpt_data_set = 1
+		return(cht_rpt_end_of_data())
+	}
+
+	# Αν το πρώτο πεδίο είναι begin-of-data mark (έχει τεθεί
+	# παραπάνω η flag `cht_rpt_subreport' σε 1), τότε σημαίνει
+	# ότι τα data μου έρχονται από άλλο report process (το παρόν
+	# είναι sub-report). Σ'αυτήν την περίπτωση γνωρίζω ότι στις
+	# θέσεις 2 και 3 βρίσκονται το input file name και το input
+	# line count του πρωτογενούς input και τα θέτω τώρα και στο
+	# παρόν sub-report, ώστε τυχόν μηνύματα λάθους να εμφανίζουν
+	# το input position στο αρχικό input data stream και όχι του
+	# παρόντος το οποίο είναι παράγωγο input. Παράλληλα θέτω τη
+	# (local) variable `offset' σε 3 ώστε να μπορώ παρακάτω να
+	# πάρω τις τιμές των input fields από τις σωστές θέσεις που
+	# είναι τρεις θέσεις δεξιά, καθώς έχω στη θέση 1 το BOD, στη
+	# θέση 2 το πρωτογενές input file name και στη θέση 3 το
+	# πρωτογενές input line count.
+
+	if (cht_rpt_subreport == 1) {
+		if (NF < 4)
+			cht_fatal("check_data: internal error")
+
+		cht_rpt_input_file = $2
+		cht_rpt_input_line = $3
+		offset = 3
+	}
+	else {
+		if ((fname = (FILENAME == "-" ? "" : FILENAME)) != \
+			cht_rpt_input_file) {
+			cht_rpt_input_file = fname
+			cht_rpt_input_line = 0
+		}
+
+		cht_rpt_input_line++
+		offset = 0
+	}
+
+	# Δυστυχώς, ο awk όταν συναντήσει τελείως κενή γραμμή,
+	# παρόλο που ο διαχωριστής είναι το pipe symbol ή κάποιος
+	# άλλος χαρακτήρας, θέτει το NF σε μηδέν. Εμείς όμως
+	# προτιμούμε ένα με κενό το πρώτο πεδίο.
+
+	if (NF <= 0)
+		NF = 1
+
+	# Έχω στα χέρια μου κανονικό input (όχι control data)
+	# και ελέγχω πρώτα αν έχω τον ελάχιστο απαιτούμενο
+	# αριθμό πεδίων. Μόνο αν περάσω αυτόν τον έλεγχο, θα
+	# προχωρήσω στον έλεγχο της ορθότητας των τιμών των
+	# πεδίων του input.
+
+	if ((NF - offset) < cht_rpt_input_count)
+		return(cht_rpt_input_error("input syntax error"))
+
+	# Το input πέρασε τον έλεγχο όσον αφορά στο ελάχιστο
+	# πλήθος πεδίων. Τώρα θα προχωρήσω στον έλεγχο της
+	# ορθότητας των τιμών των πεδίων αυτών. Αν ο μετρητής
+	# `cht_rpt_data_line' είναι -3, σημαίνει ότι είναι
+	# η πρώτη φορά που βρίσκομαι σ'αυτό το σημείο, δηλαδή
+	# είναι η πρώτη φορά που διαχειρίζομαι input με τον
+	# ελάχιστο απαιτούμενο αριθμό πεδίων, επομένως είναι
+	# η κατάλληλη στιγμή να περιγραφούν οι τύποι των πεδίων
+	# του input. Παράλληλα, αν και δεν είναι απαραίτητο
+	# στην παρούσα φάση, παίρνω και την περιγραφή των sort
+	# fields (εφόσον υπάρχει sort)· αυτό το κάνω εδώ, και
+	# όχι αργότερα που ίσως θα ήταν ορθότερο, για να μην
+	# περιπλέξω πολύ τον κώδικα, αλλά και για έναν πιο
+	# σημαντικό λόγο: μπορώ στον `before data' section
+	# να κλείνω τον SQL server που ίσως ανοίξει για την
+	# περιγραφή των πεδίων (ipunt και sort), εφόσον κρίνω
+	# ότι δεν θα τον χρειαστώ στη συνέχεια.
+
+	if (cht_rpt_data_line == -3) {
+		cht_rpt_data_line = -2
+		cht_rpt_describe_input()
+		if (cht_rpt_sort_count)
+			cht_rpt_describe_sort()
+
+		cht_rpt_check_types()
+	}
+
+	# Ελέγχω τώρα την ορθότητα των τιμών των πεδίων του
+	# input. Μόνο εφόσον το input είναι σωστό θα προχωρήσω
+	# στην εκτέλεση του `before data' κώδικα.
+
+	if (cht_rpt_check_input(offset))
+		return(1)
+
+	# Το input έχει περάσει τους ελέγχους και ασχέτως με το
+	# αν θα το δεχθώ ή θα το απορρίψω μέσω του input κώδικα
+	# (απορρίπτω με return(1) μέσα από τον input κώδικα)
+	# εκτελώ τον `before data' κώδικα. Αυτό το κάνω καθώς
+	# είναι πολύ πιθανό στον `before data' κώδικα να έχω
+	# προαπαιτούμενα για τον `input' κώδικα.
+
+	if (cht_rpt_data_line == -2) {
+		cht_rpt_before_first_data_code()
+		cht_rpt_data_line = -1
+	}
+
+	return(cht_rpt_set_input(offset))
+}
+
+#
+# Η function `cht_rpt_return_data' είναι σημαντική για την επικοινωνία
+# μας με το πρωτεύον report εφόσον είμαστε σε subreport. Στέλνει ένα
+# end-of-data mark πίσω (στο πρωτεύον report) μετά από όποιο output
+# έχουμε ίσως τυπώσει. Αυτό αποτελέι σήμα για το πρωτεύον report ότι
+# είμαστε έτοιμοι πάλι να παραλάβουμε νέα δεδομένα.
+#
+
+function cht_rpt_return_data() {
+	if (cht_rpt_subreport) {
+		print cht_sql_eod
+		fflush()
+	}
+}
+
+END {
+	if (NR > 0) {
+		if (cht_rpt_report_active)
+			cht_rpt_end_of_data()
+
+		if (cht_rpt_accepted_data)
+			cht_rpt_after_accepted_code()
+
+		if (cht_rpt_data_line != -3)
+			cht_rpt_after_last_data_code()
+
+		cht_rpt_end_code()
+		cht_rpt_return_data()
+	}
+}
+
+#
+# Η function `cht_rpt_check_value' δέχεται ως παράμετρο τη θέση του
+# πεδίου στο input (1-base) και, αφού εκτελέσει έλεγχο που αφορά στην
+# ορθότητα της τιμής του πεδίου, επιστρέφει μηδέν αν το πεδίο έχει
+# δεκτή τιμή, αλλιώς επιστρέφει μη μηδενική τιμή.
+#
+
+function cht_rpt_check_value(nf, offset) {
+	offset += nf	# use `offset' as actual field position.
+
+	# Στις αλφαριθμητικές μεταβλητές δεν υπάρχουν απαράδεκτες
+	# τιμές. Απλώς clipάρω τα κενά στο τέλος. Χρησιμοποιώ
+	# απευθείας την `sub' αντί της `cht_clipstr' για μεγαλύτερη
+	# ταχύτητα.
+
+	if (cht_rpt_input_type[nf] == 2) {	# CHARACTER
+		sub("[ \t]+$", "", $offset)
+		return(0)
+	}
+
+	# Μιλάμε πια για μεταβλητές αριθμητικού τύπου, μεταβλητές
+	# τύπου ημερομηνίας ή μεταβλητές τύπου ώρας. Εδώ τα κενά
+	# πεδία ή τα πεδία που ξεκινούν με null χαρακτήρα θεωρούνται
+	# null και επομένως είναι δεκτά. Οι τιμές clipάρονται μπρος-
+	# πίσω. Χρησιμοποιώ τη `sub' αντί της `cht_clipstr' για
+	# μεγαλύτερη ταχύτητα. Με την `gsub' αντί της `sub' δεν
+	# φαίνεται να κερδίζω πολλά πράγματα.
+
+	sub("^[ \t]+", "", $offset)
+	sub("[ \t]+$", "", $offset)
+	if (($offset == "") || ($offset ~ /^\*/)) {
+		$offset = ""
+		return(0)
+	}
+
+	if (cht_rpt_input_type[nf] == 1) { # NUMERIC
+		if ($offset !~ /^[-]?[ \t]*[0-9]+$/) {
+			cht_rpt_input_error($offset \
+				": invalid numeric value for field `" \
+				cht_rpt_input_field[nf] "'")
+			return(1)
+		}
+
+		return(0)
+	}
+
+	if (cht_rpt_input_type[nf] == 3) { # DATE
+		if (cht_dttodmy($offset)) {
+			cht_rpt_input_error($offset \
+				": invalid date value for field `" \
+				cht_rpt_input_field[nf] "'")
+			return(1)
+		}
+
+		return(0)
+	}
+
+	if (cht_rpt_input_type[nf] == 4) { # FLOAT
+		if (cht_fltck($offset)) {
+			cht_rpt_input_error($offset \
+				": invalid float value for field `" \
+				cht_rpt_input_field[nf] "'")
+			return(1)
+		}
+
+		return(0)
+	}
+
+	if (cht_rpt_input_type[nf] == 5) { # TIME
+		if (cht_tmtohm($offset)) {
+			cht_rpt_input_error($offset \
+				": invalid time value for field `" \
+				cht_rpt_input_field[nf] "'")
+			return(1)
+		}
+
+		return(0)
+	}
+
+	cht_rpt_input_error($offset ": invalid type for field `" \
+		cht_rpt_input_field[nf] "'")
+	return(1)
+}
+
+#
+# Η function `cht_rpt_set_value' δέχεται ως παράμετρο το input
+# position μιας μεταβλητής και επιστρέφει την τιμή της μεταβλητής
+# "σουλουπωμένη" ανάλογα με τον τύπο του πεδίου. Τα πεδία που
+# ξεκινάνε με null χαρακτήρα επιστρέφονται ως κενά strings (null).
+#
+
+function cht_rpt_set_value(nf, offset,		val) {
+	offset += nf	# use `offset' as actual field position.
+	if (cht_rpt_input_type[nf] == 2)	# CHARACTER
+		return($offset)
+
+	if ($offset == "")
+		return("")
+
+	if (cht_rpt_input_type[nf] == 1)	# NUMERIC
+		return($offset + 0)
+
+	if (cht_rpt_input_type[nf] == 3)	# DATE
+		return($offset)
+
+	if (cht_rpt_input_type[nf] == 4)	# FLOAT
+		return($offset + 0.0)
+
+	if (cht_rpt_input_type[nf] == 5)	# TIME
+		return($offset)
+
+	cht_rpt_input_error($offset ": unknown type for field `"\
+		cht_rpt_input_field[nf] "' (internal error)")
+	exit(2)
+}
+
+#
+# Η function `cht_rpt_make_sort_command' ετοιμάζει το sort command
+# line για external sort. Η fnction καλείται μια μόνο φορά μέσα από
+# την `cht_rpt_sort_index' την πρώτη φορά που θα προκύψει ανάγκη για
+# external sort.
+#
+
+function cht_rpt_make_sort_command(		i, col1, col2) {
+	cht_rpt_sort_command = "sort -t\\|"
+	for (i = 1; i <= cht_rpt_sort_count; i++) {
+		if (!cht_rpt_sort_order[i])
+			continue
+
+		cht_rpt_sort_command = cht_rpt_sort_command \
+			" -k" i "," i
+		if (cht_rpt_sort_order[i] < 0)
+			cht_rpt_sort_command = \
+				cht_rpt_sort_command "r"
+
+		if (cht_rpt_sort_type[i] != 2)
+			cht_rpt_sort_command = \
+				cht_rpt_sort_command "n"
+	}
+}
+
+#
+# Η function `cht_rpt_sort_index' επιστρέφει τη θέση του array
+# `cht_rpt_sort_line' στην οποία θα τοποθετηθεί το προς ταξινόμηση
+# record. Αν όμως έχει ήδη ξεκινήσει εξωτερικό sort process pipe,
+# ή δεν υπάρχει ανάγκη πραγματικής ταξινόμησης, τότε το record
+# τοποθετείται στη θέση 0 του array.
+#
+
+function cht_rpt_sort_index(		i) {
+	if (cht_rpt_sorted)
+		return(0)
+
+	if (cht_rpt_sort_pipe)
+		return(0)
+
+	if (cht_rpt_data_line < cht_rpt_sort_max)
+		return(cht_rpt_data_line)
+
+	# Πρέπει να ξεκινήσει εξωτερικό sort process pipe καθώς το
+	# πλήθος των προς ταξινόμηση records έχει υπερβεί το όριο
+	# εσωτερικής ταξινόμησης. Ξεκινώ το pipe και, πριν δρομολογήσω
+	# το τρέχον record για αποστολή, στέλνω όλα τα κρατημένα
+	# records του array εσωτερικής ταξινόμησης `cht_rpt_sort_line'
+	# το οποίο και κάνω delete αμέσως μετά (δεν είμαι σίγουρος αν
+	# το delete είναι προς όφελος της αποτελεσματικότητας ή όχι).
+
+	if (cht_rpt_sort_command == "")
+		cht_rpt_make_sort_command()
+
+	for (i = 1; i < cht_rpt_data_line; i++)
+		print cht_rpt_sort_line[i] |& cht_rpt_sort_command
+
+	# delete cht_rpt_sort_line
+
+	cht_rpt_sort_pipe = 1
+	return(0)
+}
+
+#
+# Η function `cht_rpt_sort_check' καλείται από τη `cht_rpt_sort_send'
+# η οποία στέλνει τα records για ταξινόμηση εφόσον αυτό είναι
+# απαραίτητο και έχουν ελεγχθεί οι τιμές των sort fields.
+# Η function επιστρέφει μηδέν όταν το record αποστέλλεται για
+# ταξινόμηση ή όταν τα sort fields δεν έχουν δεκτές τιμές, αλλιώς
+# επιστρέφει μη μηδενική τιμή, οπότε να γνωρίζω μέσα στη function
+# `cht_rpt_sort_send' αν θα διαχειριστώ άμεσα τα δεδομένα ή θα
+# περιμένω να τα διαχειριστώ μετά την ταξινόμηση (δευτερογενώς).
+#
+
+function cht_rpt_sort_check(			i, errs, dmyhm, si) {
+	for (i = 1; i <= cht_rpt_sort_count; i++) {
+		if (cht_rpt_sort_type[i] == 2)		# CHARACTER
+			continue
+
+		if (cht_rpt_new_value[i] == "")		# null
+			continue
+
+		if (cht_rpt_sort_type[i] == 1) {	# NUMERIC
+			cht_rpt_new_value[i] += 0
+			continue
+		}
+
+		if (cht_rpt_sort_type[i] == 3) {	# DATE
+			cht_rpt_new_value[i] = \
+				(cht_dttodmy(cht_rpt_new_value[i], \
+				dmyhm) ? "" : sprintf("%04d%02d%02d", \
+				dmyhm[3], dmyhm[2], dmyhm[1]))
+			continue
+		}
+
+		if (cht_rpt_sort_type[i] == 4) {	# FLOAT
+			cht_rpt_new_value[i] += 0.0
+			continue
+		}
+
+		if (cht_rpt_sort_type[i] == 5) {	# TIME
+			cht_rpt_new_value[i] = \
+				(cht_tmtohm(cht_rpt_new_value[i], \
+				dmyhm) ? "" : sprintf("%02d%02d", \
+				dmyhm[1], dmyhm[2]))
+			continue
+		}
+
+		cht_rpt_input_error(cht_rpt_new_value[i] \
+			": invalid type for field `" \
+			cht_rpt_sort_field[i] "'")
+		errs++
+	}
+
+	# Ήρθε η ώρα της επιστροφής στην καλούσα `cht_rpt_sort_send'.
+	# Αν εμφανίστηκαν προβλήματα με τις τιμές των sort fields
+	# επιστρέφω μηδέν οπότε θα μοιάζει σαν να "έφυγε" το record
+	# για ταξινόμηση (ενώ στην πραγματικότητα το εξαλείφω και
+	# από το data set μειώνοντας τον μετρητή `cht_rpt_data_line'
+	# κατά ένα). Αν οι τιμές των sort fields ήταν εντάξει και
+	# έχω πραγματική ταξινόμηση επιστρέφω πάλι μη μηδενική τιμή,
+	# αλλιώς επιστρέφω μηδέν οπότε η `cht_rpt_sort_send' θα
+	# διαχειριστεί άμεσα το record (οι τιμές των πεδίων είναι
+	# διαθέσιμες και στις αντίστοιχες μεταβλητές και στο array
+	# `cht_rpt_new_value', και στο `cht_rpt_sort_line[0]').
+
+	if (errs) {
+		if (--cht_rpt_data_line >= 0)
+			return(0)
+
+		cht_rpt_input_error("data line underflow " \
+			"(internal error)")
+		exit(2)
+	}
+
+	cht_rpt_sort_line[si = cht_rpt_sort_index()] = \
+		cht_rpt_new_value[1]
+	for (i = 2; i <= cht_rpt_sort_count; i++)
+		cht_rpt_sort_line[si] = cht_rpt_sort_line[si] \
+			"|" cht_rpt_new_value[i]
+
+	# "Κολλάω" στο sort line το όνομα του input file και τον
+	# αριθμό γραμμής του input line ώστε να τα έχω αν τα χρειαστώ
+	# κατά τη διαχείριση του δευτερογενούς (ταξινομημένου) input.
+
+	cht_rpt_sort_line[si] = cht_rpt_sort_line[si] "|" \
+		cht_rpt_input_file "|" cht_rpt_input_line
+
+	if (cht_rpt_sort_pipe)
+		print cht_rpt_sort_line[0] |& cht_rpt_sort_command
+
+	return(cht_rpt_sorted)
+}

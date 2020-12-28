@@ -1,0 +1,12 @@
+*\.swp
+*\.o
+*\.a
+*\.so
+*\.gz
+*\.ro
+*\.exe
+*\.tar
+*\.swp
+*\.tab\.[ch]
+lex\.yy\.c
+src/spawk/test[1-9]\.out

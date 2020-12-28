@@ -1,0 +1,3412 @@
+#!/bin/awk
+########################################################################
+#
+#               Awk `CHT' library functions
+#               ===========================
+#
+# Ακολουθούν awk functions γενικής χρήσης. Η βιβλιοθήκη αυτή μπορεί
+# να διευκολύνει κατά πολύ τη γραφή awk προγραμμάτων με χρήση της
+# δυνατότητας επανάληψης της -f option του awk (βλ. awk manual).
+# Για να συμπεριλάβουμε τις παρακάτω functions στο awk script,
+# έστω awk_script, γράφουμε:
+#
+#     awk -v cht_progname=program_name -f /cht/lib/cht.awk \
+#         -v var1=variable1 -v var2=variable2 ... -f awk_script ...
+#
+# όπου program_name είναι το όνομα του προγράμματος που θέλουμε να
+# εμφανίζεται στα μηνύματα λάθους και var1, var2 κλπ είναι οι
+# διάφορες μεταβλητές που περνάμε στο awk_script. Αν δεν υπάρχει
+# awk_script αλλά έχω on-the-fly awk script δίνω:
+#
+#     awk -v cht_progname=program_name -f /cht/lib/cht.awk \
+#         -v var1=variable1 -v var2=variable2 ... --source '{
+#         ....
+#     }' ...
+#
+# Εναλλακτικά μπορείτε να χρησιμοποιήσετε το ψευδοπρόγραμμα `chtawk'
+# π.χ.
+#
+#     chtawk -v var1=variable1 -v var2=variable2 -f awk_script ...
+#
+# ή
+#
+#     chtawk -v var1=variable1 -v var2=variable2 --source '{
+#         ...
+#     }' ...
+#
+# εφόσον έχετε καλέσει (shell inclusion) το script `set_progname' στην
+# αρχή του shell script:
+#
+#     ...
+#     . set_progname
+#     ...
+#
+# Ακολουθεί κατάλογος με τα global αντικείμενα. Τα αντικείμενα που
+# είναι μαρκαρισμένα με `*' χρησιμοποιούνται εσωτερικά από τις
+# functions της βιβλιοθήκης και δεν εδείκνυνται για απευθείας χρήση
+# μέσα από τα awk scripts.
+#
+# STRING	 cht_progname
+# STRING	 cht_error_file
+# NUMERIC	*cht_pid
+# NUMERIC	*cht_uid
+# STRING	*cht_user
+# STRING	*cht_isatty_list
+# NUMERIC_ARRAY	*cht_isatty
+# STRING	*cht_monitor_file
+# NUMERIC	 cht_tmp_aa
+# NUMERIC	 cht_tpm
+# NUMERIC	*cht_tiny
+# STRING	*cht_sql_updcmd
+# NUMERIC	*cht_sql_updpid
+# STRING	*cht_rpt_command
+# NUMERIC_ARRAY	*cht_rpt_status
+# STRING	 cht_separator
+# STRING	 cht_subsep
+# NUMERIC	*cht_month_days
+# STRING_ARRAY	*cht_onoma_AG
+# STRING_ARRAY	*cht_onoma_AA
+# STRING_ARRAY	*cht_onoma_TG
+# STRING_ARRAY	*cht_onoma_TA
+# STRING_ARRAY	*cht_ekalex_T
+# STRING_ARRAY	*cht_ekalex_O
+# STRING_ARRAY	*cht_declex
+# STRING_ARRAY	*cht_monlex_T
+# STRING_ARRAY	*cht_monlex_O
+# STRING_ARRAY	*cht_dow_table
+# STRING_ARRAY	*cht_minas_table
+# STRING_ARRAY	*cht_tolower_map
+# STRING_ARRAY	*cht_toupper_map
+# STRING_ARRAY	*cht_notonos_map
+# STRING_ARRAY	 cht_total_line
+# STRING_ARRAY	*cht_spf
+# STRING_ARRAY	*cht_text_data
+# NUMERIC_ARRAY	*cht_text_aa_data
+#
+# Ακολουθεί κατάλογος με τις functions και τα σωστά ορίσματα. Οι
+# functions που είναι μαρκαρισμένες με `*' είναι εσωτερικές και
+# δεν ενδείκνυνται για απευθείας κλήση μέσα από τα awk scripts.
+#
+# STRING	 cht_error([message])
+# NUMERIC	 cht_errmsg([message])
+# NUMERIC	 cht_syntax([data])
+# VOID		 cht_cleanup([sql])
+# VOID		 cht_abort(number [, msg])
+# VOID		 cht_fatal([message])
+# STRING	 cht_tmpck(file)
+# STRING	 cht_ftrunc(file)
+# STRING	 cht_fdelete(file)
+# STRING	 cht_tmpname([string])
+# STRING	 cht_rpt_return(value [, index])
+# VOID		*cht_rpt_receive(report-id [, results])
+# STRING	 cht_rpt_send(report-id [, data [, results]])
+# STRING	*cht_rpt_return_result(array)
+# VOID		 cht_rpt_open(report-id)
+# STRING	 cht_rpt_close([report-id [, results]])
+# VOID		 cht_rpt_cancel([report-id])
+# NUMERIC	 cht_fprint(file)
+# NUMERIC	 cht_farray(array [, file])
+# STRING	 cht_addword(string, string)
+# NUMERIC	 cht_date2ld(string)
+# STRING	 cht_ld2date(number)
+# NUMERIC	 cht_meres(from, to)
+# DATE		 cht_dtmeres(date, days)
+# STRING	 cht_curdate([dmy])
+# STRING	 cht_curtime([hm])
+# NUMERIC	 cht_disekto(year)
+# NUMERIC	 cht_curyear([offset])
+# NUMERIC	 cht_mdays(month [, year])
+# NUMERIC	 cht_dmyck(dmy)
+# NUMERIC	*cht_splitdt(string)
+# NUMERIC	 cht_dttodmy(date [, dmy])
+# STRING	 cht_dmytodt(dmy)
+# STRING	 cht_fixdmy(dmy)
+# STRING	 cht_fixdt(date [, dmy])
+# NUMERIC	 cht_dterror(date [,msg])
+# NUMERIC	 cht_dateck(date, [, msg [, dmy]])
+# NUMERIC	 cht_tmerror(time)
+# NUMERIC	 cht_errdate(date, [, dmy])
+# NUMERIC	 cht_errtime(time, [, hm])
+# NUMERIC	 cht_dmycmp(dmy, dmy)
+# NUMERIC	 cht_dtcmp(date1, date2 [, dmy1, dmy2])
+# NUMERIC	 cht_hmcmp(hm, hm)
+# NUMERIC	 cht_tmcmp(time1, time2 [, hm1, hm2])
+# NUMERIC	 cht_meres2xmi(days)
+# NUMERIC	 cht_xmi2meres(xmi [, xmy_array])
+# NUMERIC	 cht_xmixmi(xmi, xmi)
+# NUMERIC	 cht_ddxmi(date1, date2)
+# NUMERIC	 cht_ddmeres(date1, date2)
+# STRING	 cht_datemeres(date, days)
+# STRING	 cht_datexmi(date, xmi)
+# NUMERIC	 cht_hmck(hm)
+# NUMERIC	 cht_tmtohm(time [, hm])
+# NUMERIC	 cht_round(number [, decimal])
+# NUMERIC	 cht_amount(number [, decimal])
+# STRING	 cht_triad(number [, decimal])
+# STRING	 cht_sptriad(number [, decimal [, zero]])
+# STRING	 cht_ztriad(number [, decimal [, zero]])
+# STRING	 cht_fltprint(number)
+# STRING	*cht_lex100(number [, thiliko])
+# STRING	 cht_lexevro(euro)
+# STRING	 cht_lexlepta(cents)
+# STRING	 cht_lexposo(number)
+# STRING	 cht_evro(euro [, width [, fill [, zero]]])
+# NUMERIC	 cht_lepta(cents [, width [, fill [, zero]]])
+# STRING	 cht_clipstr(string [, end_only])
+# NUMERIC	 cht_split(string, array [, sep])
+# NUMERIC	 cht_getline(array [, file [, sep]])
+# STRING	*cht_Onoma(string, string_array)
+# STRING	 cht_onoma(όνομα, γένος ([ΑΓ]), πτώση ([ΓΑ]))
+# STRING	 cht_arthro(γένος ([ΑΓ]) [, kefaleo [, πτώση ([ΟΓΑ])]])
+# STRING	 cht_quote()
+# NUMERIC	 cht_abs(number)
+# NUMERIC	 cht_zero(number)
+# STRING	 cht_srep(string, number)
+# STRING	 cht_tab(string, width, LCR, fillchar)
+# STRING	 cht_center(string, width [, fillchar])
+# STRING	 cht_left(string, width [, fillchar])
+# STRING	 cht_right(string, width [, fillchar])
+# NUMERIC	 cht_istogram(array, format, width [, max, fillchar])
+# NUMERIC	 cht_fistogram(file, coli, colv, sepchar, format,
+#			width [, max, fillchar])
+# NUMERIC	 cht_numck(string [, min [, max]])
+# NUMERIC	 cht_fltck(string [, min [, max]])
+# STRING	 cht_bold([on])
+# STRING	 cht_underline([on])
+# STRING	 cht_italics([on])
+# STRING	 cht_normal()
+# STRING	 cht_cpi(cpi)
+# STRING	 cht_tpm_string(s [, dot])
+# VOID	 	 cht_tpm_tb([n])
+# VOID		 cht_tpm_sk([n])
+# VOID		 cht_tpm_bp([n [,sk]])
+# NUMERIC	 cht_tpm_ll([ll [, po [, cpi [, pl]]]])
+# VOID		 cht_tpm_header([titlos [, open [, skip]]])
+# VOID		 cht_tpm_footer([skip])
+# NUMERIC	 cht_tpm_setup([ll [, po [, cpi [, pl]]]])
+# VOID		 cht_tpm_data([yes])
+# STRING	 cht_minas(month, low)
+# NUMERIC	 cht_dow(date)
+# STRING	 cht_mera(date, low)
+# STRING	 cht_imerominia(date, mera, low)
+# STRING	 cht_tolower(string)
+# STRING	 cht_toupper(string)
+# STRING	 cht_notonos(string)
+# NUMERIC	 cht_afmck(afm)
+# NUMERIC	 cht_parray(array [, max [, base]])
+# NUMERIC	 cht_larray(array)
+# NUMERIC	 cht_text_read(file[, tag])
+# NUMERIC	 cht_text_aa(code[, tag])
+# NUMERIC	 cht_text(code[, tag])
+# NUMERIC	 cht_text_clear([tag[, code]])
+# NUMERIC	 cht_egrafo_header(ipkey, arm, tel, pro, 
+#			ll, po, cpi, date)
+# VOID		 cht_egrafo_ptss(ptss, text [, no_fill])
+# NUMERIC	 cht_date2minas(date)
+# NUMERIC	 cht_mines(dm1, dm2)
+# NUMERIC	 cht_yesno(prompt [, default])
+#
+########################################################################
+
+#
+# Ακολουθεί default BEGIN section. Εδώ κάνουμε διάφορες εργασίες
+# αρχικοποίησης. Αυτό το section εκτελείται πριν από τα BEGIN sections
+# που ίσως υπάρχουν στα awk scripts.
+#
+
+BEGIN {
+	if (!cht_error_file)
+		cht_error_file = "/dev/stderr"
+
+	if ((cht_pid = PROCINFO["pid"] + 0) < 2)
+		cht_fatal("invalid process id")
+
+	if ((cht_uid = PROCINFO["uid"] + 0) < 0)
+		cht_fatal("invalid user id")
+
+	if (!(cht_user = ENVIRON["USER"]))
+		cht_fatal("invalid user name")
+
+	OFS = "\t "			# βολικό για tpm post processing
+	CONVFMT = "%.6f"		# για σωστό χειρισμό των floats
+	cht_tmp_dir = "/local/tmp"	# temporary files' directory
+	cht_tmp_aa = 0			# temporary files' counter
+	cht_tpm = cht_tpm + 0		# no tpm processing follows
+	cht_tiny = 0.0000000001		# too small quantity
+
+	# Η μεταβλητή `cht_isatty_list' έχει τεθεί από το `chtawk'
+	# shell script σε μια `:' separated list με τρία στοιχεία
+	# με τιμές 1 ή 0 ανάλογα με το αν οι file descriptors 0, 1
+	# και 2 (standard input, standard output και standard error)
+	# είναι τερματικά ή όχι. Αυτή η λίστα "σπάει" σε array που
+	# ονομάζεται `cht_isatty' και έτσι, μπορούμε να ξέρουμε αν
+	# κάποιος από τους παραπάνω file descriptors είναι τερματκό
+	# ή όχι ανάλογα με το αν το αντίστοιχο στοιχείο του array
+	# είναι διάφορο του μηδενός ή όχι, π.χ. if (cht_isatty[2])...
+
+	split(cht_isatty_list, cht_isatty, ":")
+	cht_isatty[0] = cht_isatty[1]
+	cht_isatty[1] = cht_isatty[2]
+	cht_isatty[2] = cht_isatty[3]
+	delete cht_isatty[3]
+	cht_sql_updcmd = "/cht/lib/db/chtupdsql"
+	cht_sql_updpid = 0		# update server's pid
+	if (cht_rpt_command == "")	# report server program name
+		cht_rpt_command = "chtawkrpt"
+
+	delete cht_rpt_status		# pipe report servers' status
+	cht_separator = (cht_clipstr(cht_separator) == "" ? \
+		"|" : substr(cht_separator, 1, 1))
+	cht_subsep = "\034"		# internal separator
+
+	# Η function `cht_monitor' γράφει μηνύματα στο file
+	# `cht_monitor_file'. Αν αυτό δεν έχει καθοριστεί
+	# τότε τα μηνύματα γράφονται στο standard error αν
+	# πρόκειται για τερματικό, και το standard output
+	# δεν είναι τερματικό.
+
+	if (!cht_monitor_file) {
+		if (cht_isatty[2] && (!cht_isatty[1]))
+			cht_monitor_file = "/dev/tty"
+	}
+	else if (cht_monitor_file == "/dev/null")
+		cht_monitor_file = ""
+
+	delete cht_text_data
+	delete cht_text_aa_data
+
+	cht_month_days[1] = 31
+	cht_month_days[3] = 31
+	cht_month_days[4] = 30
+	cht_month_days[5] = 31
+	cht_month_days[6] = 30
+	cht_month_days[7] = 31
+	cht_month_days[8] = 31
+	cht_month_days[9] = 30
+	cht_month_days[10] = 31
+	cht_month_days[11] = 30
+	cht_month_days[12] = 31
+
+	# Τα arrays `cht_onoma_AG', `cht_onoma_AA', `cht_onoma_TG' και
+	# `cht_onoma_TA' περιέχουν αντίστοιχα τη γενική αρσενικού,
+	# την αιτιατική αρσενικού, τη γενική θηλυκού και την αιτιατική
+	# θηλυκού με βάση την κατάληξη των ονομάτων. Τα arrays αυτά
+	# χρησιμοποιούνται από τη function `cht_onoma'.
+
+	cht_onoma_AG["ΌΠΟΥΛΟΣ"] = "ΌΠΟΥΛΟΥ"
+	cht_onoma_AA["ΌΠΟΥΛΟΣ"] = "ΌΠΟΥΛΟ"
+	cht_onoma_AG["ΟΎΛΟΣ"] = "ΟΎΛΟΥ"
+	cht_onoma_AA["ΟΎΛΟΣ"] = "ΟΎΛΟ"
+	cht_onoma_AG["ΊΔΗΣ"] = "ΊΔΗ"
+	cht_onoma_AA["ΊΔΗΣ"] = "ΊΔΗ"
+	cht_onoma_AG["ΪΔΗΣ"] = "ΪΔΗ"
+	cht_onoma_AA["ΪΔΗΣ"] = "ΪΔΗ"
+	cht_onoma_AG["ΆΔΗΣ"] = "ΆΔΗ"
+	cht_onoma_AA["ΆΔΗΣ"] = "ΆΔΗ"
+	cht_onoma_AG["ΓΛΟΥ"] = "ΓΛΟΥ"
+	cht_onoma_AA["ΓΛΟΥ"] = "ΓΛΟΥ"
+	cht_onoma_AG["ΊΟΥ"] = "ΊΟΥ"
+	cht_onoma_AA["ΊΟΥ"] = "ΊΟΥ"
+	cht_onoma_AG["ΟΣ"] = "ΟΥ"
+	cht_onoma_AA["ΟΣ"] = "Ο"
+	cht_onoma_AG["ΌΣ"] = "ΟΎ"
+	cht_onoma_AA["ΌΣ"] = "Ό"
+	cht_onoma_AG["ΗΣ"] = "Η"
+	cht_onoma_AA["ΗΣ"] = "Η"
+	cht_onoma_AG["ΉΣ"] = "Ή"
+	cht_onoma_AA["ΉΣ"] = "Ή"
+	cht_onoma_AG["ΕΎΣ"] = "ΈΑ"
+	cht_onoma_AA["ΕΎΣ"] = "ΈΑ"
+	cht_onoma_AG["ΕΥΣ"] = "ΕΑ"
+	cht_onoma_AA["ΕΥΣ"] = "ΕΑ"
+	cht_onoma_AG["ΑΣ"] = "Α"
+	cht_onoma_AA["ΑΣ"] = "Α"
+	cht_onoma_AG["ΆΣ"] = "Ά"
+	cht_onoma_AA["ΆΣ"] = "Ά"
+	cht_onoma_AG["ΈΣ"] = "Έ"
+	cht_onoma_AA["ΈΣ"] = "Έ"
+	cht_onoma_AG["ΕΣ"] = "Ε"
+	cht_onoma_AA["ΕΣ"] = "Ε"
+	cht_onoma_AG["ΟΥΛΟΣ"] = "ΟΥΛΟΥ"
+	cht_onoma_AA["ΟΥΛΟΣ"] = "ΟΥΛΟ"
+	cht_onoma_AG["ΙΔΗΣ"] = "ΙΔΗ"
+	cht_onoma_AA["ΙΔΗΣ"] = "ΙΔΗ"
+	cht_onoma_AG["ΑΔΗΣ"] = "ΑΔΗ"
+	cht_onoma_AA["ΑΔΗΣ"] = "ΑΔΗ"
+	cht_onoma_AG["ΙΟΥ"] = "ΙΟΥ"
+	cht_onoma_AA["ΙΟΥ"] = "ΙΟΥ"
+	cht_onoma_AG["ΣΥΜΕΏΝ"] = "ΣΥΜΕΏΝ"
+	cht_onoma_AA["ΣΥΜΕΏΝ"] = "ΣΥΜΕΏΝ"
+	cht_onoma_AG["ΣΥΜΕΩΝ"] = "ΣΥΜΕΩΝ"
+	cht_onoma_AA["ΣΥΜΕΩΝ"] = "ΣΥΜΕΩΝ"
+	cht_onoma_AG["ΣΑΜΨΏΝ"] = "ΣΑΜΨΏΝ"
+	cht_onoma_AA["ΣΑΜΨΏΝ"] = "ΣΑΜΨΏΝ"
+	cht_onoma_AG["ΣΑΜΨΩΝ"] = "ΣΑΜΨΩΝ"
+	cht_onoma_AA["ΣΑΜΨΩΝ"] = "ΣΑΜΨΩΝ"
+	cht_onoma_AG["ΞΕΝΟΦΩΝ"] = "ΞΕΝΟΦΩΝΤΑ"
+	cht_onoma_AA["ΞΕΝΟΦΩΝ"] = "ΞΕΝΟΦΩΝΤΑ"
+	cht_onoma_AG["ΣΟΛΟΜΩΝ"] = "ΣΟΛΟΜΩΝΤΑ"
+	cht_onoma_AA["ΣΟΛΟΜΩΝ"] = "ΣΟΛΟΜΩΝΤΑ"
+	cht_onoma_AG["ΩΝ"] = "ΩΝΑ"
+	cht_onoma_AA["ΩΝ"] = "ΩΝΑ"
+	cht_onoma_AG["ΏΝ"] = "ΏΝΤΑ"
+	cht_onoma_AA["ΏΝ"] = "ΏΝΤΑ"
+	cht_onoma_AG["όπουλος"] = "όπουλου"
+	cht_onoma_AA["όπουλος"] = "όπουλο"
+	cht_onoma_AG["ούλος"] = "ούλου"
+	cht_onoma_AA["ούλος"] = "ούλο"
+	cht_onoma_AG["ίδης"] = "ίδη"
+	cht_onoma_AA["ίδης"] = "ίδη"
+	cht_onoma_AG["ΐδης"] = "ΐδη"
+	cht_onoma_AA["ΐδης"] = "ΐδη"
+	cht_onoma_AG["άδης"] = "άδη"
+	cht_onoma_AA["άδης"] = "άδη"
+	cht_onoma_AG["γλου"] = "γλου"
+	cht_onoma_AA["γλου"] = "γλου"
+	cht_onoma_AG["ίου"] = "ίου"
+	cht_onoma_AA["ίου"] = "ίου"
+	cht_onoma_AG["ος"] = "ου"
+	cht_onoma_AA["ος"] = "ο"
+	cht_onoma_AG["ός"] = "ού"
+	cht_onoma_AA["ός"] = "ό"
+	cht_onoma_AG["ης"] = "η"
+	cht_onoma_AA["ης"] = "η"
+	cht_onoma_AG["ής"] = "ή"
+	cht_onoma_AA["ής"] = "ή"
+	cht_onoma_AG["ας"] = "α"
+	cht_onoma_AA["ας"] = "α"
+	cht_onoma_AG["άς"] = "ά"
+	cht_onoma_AA["άς"] = "ά"
+	cht_onoma_AG["Συμεών"] = "Συμεών"
+	cht_onoma_AA["Συμεών"] = "Συμεών"
+	cht_onoma_AG["Σαμψών"] = "Σαμψών"
+	cht_onoma_AA["Σαμψών"] = "Σαμψών"
+	cht_onoma_AG["ων"] = "ωνα"
+	cht_onoma_AA["ων"] = "ωνα"
+	cht_onoma_AG["ών"] = "ώντα"
+	cht_onoma_AA["ών"] = "ώντα"
+	cht_onoma_AG["Ιανουάριος"] = "Ιανουαρίου"
+	cht_onoma_AG["Φεβρουάριος"] = "Φεβρουαρίου"
+	cht_onoma_AG["Μάρτιος"] = "Μαρτίου"
+	cht_onoma_AG["Απρίλιος"] = "Απριλίου"
+	cht_onoma_AG["Μάιος"] = "Μαΐου"
+	cht_onoma_AG["Ιούνιος"] = "Ιουνίου"
+	cht_onoma_AG["Ιούλιος"] = "Ιουλίου"
+	cht_onoma_AG["Αύγουστος"] = "Αυγούστου"
+	cht_onoma_AG["Σεπτέμβριος"] = "Σεπτεμβρίου"
+	cht_onoma_AG["Οκτώβριος"] = "Οκτωβρίου"
+	cht_onoma_AG["Νοέμβριος"] = "Νοεμβρίου"
+	cht_onoma_AG["Δεκέμβριος"] = "Δεκεμβρίου"
+
+	cht_onoma_TG["Α"] = "ΑΣ"
+	cht_onoma_TA["Α"] = "Α"
+	cht_onoma_TG["Η"] = "ΗΣ"
+	cht_onoma_TA["Η"] = "Η"
+	cht_onoma_TG["Ά"] = "ΆΣ"
+	cht_onoma_TA["Ά"] = "Ά"
+	cht_onoma_TG["Ή"] = "ΉΣ"
+	cht_onoma_TA["Ή"] = "Ή"
+	cht_onoma_TG["Ω"] = "ΩΣ"
+	cht_onoma_TA["Ω"] = "Ω"
+	cht_onoma_TG["Ώ"] = "ΏΣ"
+	cht_onoma_TA["Ώ"] = "Ώ"
+	cht_onoma_TG["α"] = "ας"
+	cht_onoma_TA["α"] = "α"
+	cht_onoma_TG["η"] = "ης"
+	cht_onoma_TA["η"] = "η"
+	cht_onoma_TG["ά"] = "άς"
+	cht_onoma_TA["ά"] = "ά"
+	cht_onoma_TG["ή"] = "ής"
+	cht_onoma_TA["ή"] = "ή"
+	cht_onoma_TG["ω"] = "ως"
+	cht_onoma_TA["ω"] = "ω"
+	cht_onoma_TG["ώ"] = "ώς"
+	cht_onoma_TA["ώ"] = "ώ"
+
+	# Το array `cht_ekalex_T' περιέχει τα λεκτικά των εκατοντάδων
+	# θηλυκού γένους. Τα αντίσοιχα ουδέτερα λεκτικά περιέχονται
+	# στο array `cht_ekalex_O'. Το array `cht_declex' περιέχει
+	# τα λεκτικά των δεκάδων ανεξαρτήτως γένους. Το array
+	# `cht_monlex_T' περιέχει τα λεκτικά των μονάδων θηλυκού
+	# γένους, ενώ τα αντίστοιχα ουδέτερα λεκτικά περιέχονται στο
+	# array `cht_monlex_O'. Όλα τα παραπάνω arrays χρησιμοποιούνται
+	# από τη function `cht_lex100' και κατ'επέκταση απ'τη function
+	# `cht_lexevro'.
+
+	cht_ekalex_T[1] = "ΕΚΑΤΟΝ"
+	cht_ekalex_T[2] = "ΔΙΑΚΟΣΙΕΣ"
+	cht_ekalex_T[3] = "ΤΡΙΑΚΟΣΙΕΣ"
+	cht_ekalex_T[4] = "ΤΕΤΡΑΚΟΣΙΕΣ"
+	cht_ekalex_T[5] = "ΠΕΝΤΑΚΟΣΙΕΣ"
+	cht_ekalex_T[6] = "ΕΞΑΚΟΣΙΕΣ"
+	cht_ekalex_T[7] = "ΕΠΤΑΚΟΣΙΕΣ"
+	cht_ekalex_T[8] = "ΟΚΤΑΚΟΣΙΕΣ"
+	cht_ekalex_T[9] = "ΕΝΝΙΑΚΟΣΙΕΣ"
+
+	cht_ekalex_O[1] = "ΕΚΑΤΟΝ"
+	cht_ekalex_O[2] = "ΔΙΑΚΟΣΙΑ"
+	cht_ekalex_O[3] = "ΤΡΙΑΚΟΣΙΑ"
+	cht_ekalex_O[4] = "ΤΕΤΡΑΚΟΣΙΑ"
+	cht_ekalex_O[5] = "ΠΕΝΤΑΚΟΣΙΑ"
+	cht_ekalex_O[6] = "ΕΞΑΚΟΣΙΑ"
+	cht_ekalex_O[7] = "ΕΠΤΑΚΟΣΙΑ"
+	cht_ekalex_O[8] = "ΟΚΤΑΚΟΣΙΑ"
+	cht_ekalex_O[9] = "ΕΝΝΙΑΚΟΣΙΑ"
+
+	cht_declex[1] = "ΔΕΚΑ"
+	cht_declex[2] = "ΕΙΚΟΣΙ"
+	cht_declex[3] = "ΤΡΙΑΝΤΑ"
+	cht_declex[4] = "ΣΑΡΑΝΤΑ"
+	cht_declex[5] = "ΠΕΝΗΝΤΑ"
+	cht_declex[6] = "ΕΞΗΝΤΑ"
+	cht_declex[7] = "ΕΒΔΟΜΗΝΤΑ"
+	cht_declex[8] = "ΟΓΔΟΝΤΑ"
+	cht_declex[9] = "ΕΝΕΝΗΝΤΑ"
+
+	cht_monlex_T[1] = "ΜΙΑ"
+	cht_monlex_T[2] = "ΔΥΟ"
+	cht_monlex_T[3] = "ΤΡΕΙΣ"
+	cht_monlex_T[4] = "ΤΕΣΣΕΡΙΣ"
+	cht_monlex_T[5] = "ΠΕΝΤΕ"
+	cht_monlex_T[6] = "ΕΞΙ"
+	cht_monlex_T[7] = "ΕΠΤΑ"
+	cht_monlex_T[8] = "ΟΚΤΩ"
+	cht_monlex_T[9] = "ΕΝΝΕΑ"
+
+	cht_monlex_O[1] = "ΕΝΑ"
+	cht_monlex_O[2] = "ΔΥΟ"
+	cht_monlex_O[3] = "ΤΡΙΑ"
+	cht_monlex_O[4] = "ΤΕΣΣΕΡΑ"
+	cht_monlex_O[5] = "ΠΕΝΤΕ"
+	cht_monlex_O[6] = "ΕΞΙ"
+	cht_monlex_O[7] = "ΕΠΤΑ"
+	cht_monlex_O[8] = "ΟΚΤΩ"
+	cht_monlex_O[9] = "ΕΝΝΕΑ"
+
+	cht_dow_table[1] = "Κυριακή"
+	cht_dow_table[2] = "Δευτέρα"
+	cht_dow_table[3] = "Τρίτη"
+	cht_dow_table[4] = "Τετάρτη"
+	cht_dow_table[5] = "Πέμπτη"
+	cht_dow_table[6] = "Παρασκευή"
+	cht_dow_table[7] = "Σάββατο"
+
+	cht_minas_table[1] = "Ιανουάριος"
+	cht_minas_table[2] = "Φεβρουάριος"
+	cht_minas_table[3] = "Μάρτιος"
+	cht_minas_table[4] = "Απρίλιος"
+	cht_minas_table[5] = "Μάιος"
+	cht_minas_table[6] = "Ιούνιος"
+	cht_minas_table[7] = "Ιούλιος"
+	cht_minas_table[8] = "Αύγουστος"
+	cht_minas_table[9] = "Σεπτέμβριος"
+	cht_minas_table[10] = "Οκτώβριος"
+	cht_minas_table[11] = "Νοέμβριος"
+	cht_minas_table[12] = "Δεκέμβριος"
+
+	cht_tolower_map["A"] = "a"
+	cht_tolower_map["B"] = "b"
+	cht_tolower_map["C"] = "c"
+	cht_tolower_map["D"] = "d"
+	cht_tolower_map["E"] = "e"
+	cht_tolower_map["F"] = "f"
+	cht_tolower_map["G"] = "g"
+	cht_tolower_map["H"] = "h"
+	cht_tolower_map["I"] = "i"
+	cht_tolower_map["J"] = "j"
+	cht_tolower_map["K"] = "k"
+	cht_tolower_map["L"] = "l"
+	cht_tolower_map["M"] = "m"
+	cht_tolower_map["N"] = "n"
+	cht_tolower_map["O"] = "o"
+	cht_tolower_map["P"] = "p"
+	cht_tolower_map["Q"] = "q"
+	cht_tolower_map["R"] = "r"
+	cht_tolower_map["S"] = "s"
+	cht_tolower_map["T"] = "t"
+	cht_tolower_map["U"] = "u"
+	cht_tolower_map["V"] = "v"
+	cht_tolower_map["W"] = "w"
+	cht_tolower_map["X"] = "x"
+	cht_tolower_map["Y"] = "y"
+	cht_tolower_map["Z"] = "z"
+
+	cht_tolower_map["Α"] = "α"
+	cht_tolower_map["Ά"] = "ά"
+	cht_tolower_map["Β"] = "β"
+	cht_tolower_map["Γ"] = "γ"
+	cht_tolower_map["Δ"] = "δ"
+	cht_tolower_map["Ε"] = "ε"
+	cht_tolower_map["Έ"] = "έ"
+	cht_tolower_map["Ζ"] = "ζ"
+	cht_tolower_map["Η"] = "η"
+	cht_tolower_map["Ή"] = "ή"
+	cht_tolower_map["Θ"] = "θ"
+	cht_tolower_map["Ι"] = "ι"
+	cht_tolower_map["Ί"] = "ί"
+	cht_tolower_map["Ϊ"] = "ϊ"
+	cht_tolower_map["Κ"] = "κ"
+	cht_tolower_map["Λ"] = "λ"
+	cht_tolower_map["Μ"] = "μ"
+	cht_tolower_map["Ν"] = "ν"
+	cht_tolower_map["Ξ"] = "ξ"
+	cht_tolower_map["Ο"] = "ο"
+	cht_tolower_map["Ό"] = "ό"
+	cht_tolower_map["Π"] = "π"
+	cht_tolower_map["Ρ"] = "ρ"
+	cht_tolower_map["Σ"] = "σ"
+	cht_tolower_map["Τ"] = "τ"
+	cht_tolower_map["Υ"] = "υ"
+	cht_tolower_map["Ύ"] = "ύ"
+	cht_tolower_map["Ϋ"] = "ϋ"
+	cht_tolower_map["Φ"] = "φ"
+	cht_tolower_map["Χ"] = "χ"
+	cht_tolower_map["Ψ"] = "ψ"
+	cht_tolower_map["Ω"] = "ω"
+	cht_tolower_map["Ώ"] = "ώ"
+
+	cht_toupper_map["a"] = "A"
+	cht_toupper_map["b"] = "B"
+	cht_toupper_map["c"] = "C"
+	cht_toupper_map["d"] = "D"
+	cht_toupper_map["e"] = "E"
+	cht_toupper_map["f"] = "F"
+	cht_toupper_map["g"] = "G"
+	cht_toupper_map["h"] = "H"
+	cht_toupper_map["i"] = "I"
+	cht_toupper_map["j"] = "J"
+	cht_toupper_map["k"] = "K"
+	cht_toupper_map["l"] = "L"
+	cht_toupper_map["m"] = "M"
+	cht_toupper_map["n"] = "N"
+	cht_toupper_map["o"] = "O"
+	cht_toupper_map["p"] = "P"
+	cht_toupper_map["q"] = "Q"
+	cht_toupper_map["r"] = "R"
+	cht_toupper_map["s"] = "S"
+	cht_toupper_map["t"] = "T"
+	cht_toupper_map["u"] = "U"
+	cht_toupper_map["v"] = "V"
+	cht_toupper_map["w"] = "W"
+	cht_toupper_map["x"] = "X"
+	cht_toupper_map["y"] = "Y"
+	cht_toupper_map["z"] = "Z"
+
+	cht_toupper_map["α"] = "Α"
+	cht_toupper_map["ά"] = "Α"
+	cht_toupper_map["β"] = "Β"
+	cht_toupper_map["γ"] = "Γ"
+	cht_toupper_map["δ"] = "Δ"
+	cht_toupper_map["ε"] = "Ε"
+	cht_toupper_map["έ"] = "Ε"
+	cht_toupper_map["ζ"] = "Ζ"
+	cht_toupper_map["η"] = "Η"
+	cht_toupper_map["ή"] = "Η"
+	cht_toupper_map["θ"] = "Θ"
+	cht_toupper_map["ι"] = "Ι"
+	cht_toupper_map["ί"] = "Ι"
+	cht_toupper_map["ϊ"] = "Ϊ"
+	cht_toupper_map["ΐ"] = "Ϊ"
+	cht_toupper_map["κ"] = "Κ"
+	cht_toupper_map["λ"] = "Λ"
+	cht_toupper_map["μ"] = "Μ"
+	cht_toupper_map["ν"] = "Ν"
+	cht_toupper_map["ξ"] = "Ξ"
+	cht_toupper_map["ο"] = "Ο"
+	cht_toupper_map["ό"] = "Ο"
+	cht_toupper_map["π"] = "Π"
+	cht_toupper_map["ρ"] = "Ρ"
+	cht_toupper_map["σ"] = "Σ"
+	cht_toupper_map["ς"] = "Σ"
+	cht_toupper_map["τ"] = "Τ"
+	cht_toupper_map["υ"] = "Υ"
+	cht_toupper_map["ύ"] = "Υ"
+	cht_toupper_map["ϋ"] = "Ϋ"
+	cht_toupper_map["ΰ"] = "Ϋ"
+	cht_toupper_map["φ"] = "Φ"
+	cht_toupper_map["χ"] = "Χ"
+	cht_toupper_map["ψ"] = "Ψ"
+	cht_toupper_map["ω"] = "Ω"
+	cht_toupper_map["ώ"] = "Ω"
+
+	cht_notonos_map["ά"] = "α"
+	cht_notonos_map["έ"] = "ε"
+	cht_notonos_map["ή"] = "η"
+	cht_notonos_map["ί"] = "ι"
+	cht_notonos_map["ϊ"] = "ι"
+	cht_notonos_map["ΐ"] = "ι"
+	cht_notonos_map["ό"] = "ο"
+	cht_notonos_map["ύ"] = "υ"
+	cht_notonos_map["ϋ"] = "υ"
+	cht_notonos_map["ΰ"] = "υ"
+	cht_notonos_map["ώ"] = "ω"
+	cht_notonos_map["Ά"] = "Α"
+	cht_notonos_map["Έ"] = "Ε"
+	cht_notonos_map["Ή"] = "Η"
+	cht_notonos_map["Ί"] = "Ι"
+	cht_notonos_map["Ϊ"] = "Ι"
+	cht_notonos_map["Ό"] = "Ο"
+	cht_notonos_map["Ύ"] = "Υ"
+	cht_notonos_map["Ϋ"] = "Υ"
+	cht_notonos_map["Ώ"] = "Ω"
+
+	# Το array `cht_total_line' είναι τελείως βοηθητικό και
+	# χρειάζεται μόνο για "ελάφρυνση" του συστήματος. Πράγματι,
+	# στις εκτυπώσεις διαφόρων συνόλων, χρειάζεται, πολλές φορές,
+	# να τυπώνουμε μια γραμμή συνόλου· σε πρώτο επίπεδο, συνήθως,
+	# τυπώνουμε παύλες (-), σε δεύτερο επίπεδο διπλές παύλες (=),
+	# και σε τρίτο επίπεδο αστεράκια (*). Η εκτύπωση των γραμμών
+	# αυτών γίνεται, συνήθως, με τη function`cht_srep'. Όσο κι
+	# αν δεν φαίνεται με την πρώτη ματιά, υπάρχει αρκετή
+	# επιβάρυνση, καθώς, κάθε φορά που καλείται η `cht_srep',
+	# εκτελείται loop, κι αυτό μπορεί να γίνεται χιλιάδες φορές
+	# σε κάθε τρέξιμο του προγράμματος. Επομένως, γεμίζουμε από
+	# την αρχή το array `cht_total_line' με γραμμές αθροίσματος
+	# και δεικτοδοτούμε με τον αντίστοιχο χαρακτήρα. Το πλάτος
+	# είναι αρκετά μεγάλο, ώστε να καλύπτει οσοδήποτε μεγάλα
+	# ποσά. Αποκοπή στο επιθυμητό πλάτος γίνεται αυτόματα, μέσω
+	# των tab widths, αλλά μπορεί να γίνει και με την substr,
+	# πράγμα που δεν έχει νόημα, καθώς τότε μπορούμε να καλέσουμε
+	# απευθείας την `cht_srep'.
+
+	cht_total_line["-"] = cht_srep("-", 256)
+	cht_total_line["="] = cht_srep("=", 256)
+	cht_total_line["*"] = cht_srep("*", 256)
+	cht_total_line[" "] = cht_srep(" ", 256)
+
+	# Μέσα από ACCELL εφαρμογές δίνονται εκτυπώσεις μέσω RPT,
+	# ή SPF interface. Αν η παρούσα έχει δοθεί με έναν από
+	# τους δύο αυτούς τρόπους, τότε έχει ήδη τεθεί η environment
+	# variable `CHT_AMGR_SPF' με δύο ":" separated fields όπου
+	# το πρώτο πεδίο είναι [SPF][FB] και το δεύτερο περιέχει
+	# τον κωδικό του printer (util_printer.pnkey), ή το όνομα
+	# του output file.
+
+	if (ENVIRON["CHT_AMGR_SPF"] && \
+		(split(ENVIRON["CHT_AMGR_SPF"], cht_spf, ":") > 1)) {
+		cht_spf["spf"] = substr(cht_spf[1], 1, 1)
+		cht_spf["fb"] = substr(cht_spf[1], 2, 1)
+		cht_spf["pf"] = cht_spf[2]
+		if (cht_spf["fb"] == "F") {
+			cht_monitor_file = "/dev/tty"
+			cht_monitor_dirty = -1
+		}
+	}
+	else {
+		delete cht_spf
+		cht_monitor_dirty = 0
+	}
+}
+
+#
+# Η function `cht_error' χρησιμοποιείται κύρια στα μηνύματα λάθους.
+# Επιστρέφει ένα string με το όνομα του προγράμματος (`cht_progname')
+# συνοδευόμενο από `:' και ένα κενό χωρίς newline. Αν δεν έχει
+# καθοριστεί το όνομα του προγράμματος επιστρέφει το κενό string.
+# Στην function μπορεί να δοθεί και παράμετρος που θεωρείται μήνυμα
+# λάθους το οποίο επίσης μετέχει στο επιστρεφόμενο string. Για τη
+# σωστή χρήση της function δείτε παρακάτω σε κάποια από τις υπόλοιπες
+# functions.
+#
+
+function cht_error(msg) {
+	if (msg != "")
+		msg = msg "\n"
+
+	if (cht_progname != "")
+		return(cht_progname ": " msg)
+
+	return(msg)
+}
+
+#
+# Η function `cht_errmsg' τυπώνει το μήνυμα που της περνάμε ως μια και
+# μοναδική παράμετρο στο standard error.
+#
+
+function cht_errmsg(msg) {
+	if (cht_rpt_script_name != "")
+		cht_rpt_errmsg(msg)
+	else
+		printf cht_error(msg) >cht_error_file
+
+	return(1)
+}
+
+function cht_syntax(data) {
+	return(cht_errmsg((data != "" ? data : $0) ": syntax error"))
+}
+
+#
+# Η function `cht_cleanup' καλείται συνήθως στο END section του
+# awk script, εφόσον χρησιμοποιήσαμε temporary files με την
+# `cht_tmpname'. Σε περίπτωση διακοπής του προγράμματος (signal)
+# δεν καθαρίζουν αυτόματα τα temporary files αλλά βασιζόμαστε
+# στην εντολή `chtcleanup -L' που τρέχει μέσω του cron σε τακτά
+# χρονικά διαστήματα. Η `cht_cleanup' διακόπτει και όλους τους SQL
+# servers που τρέχουν ως coprocesses όπως επίσης κλείνει και όλα τα
+# ενεργά pipes· αν δεν το θέλω αυτό τότε περνάω μια μη μηδενική
+# παράμετρο οπότε απλώς καθαρίζω τα temporary files και αφήνω
+# απείραχτους τους SQL servers και τα pipes.
+#
+
+function cht_cleanup(sql,		i, rm_cmd, cmd) {
+	if (!sql) {
+		cht_sql_close(1)
+		cht_rpt_close()
+		if (cht_sql_updpid) {
+			close(cht_sql_updcmd)
+			cht_sql_updpid = 0
+		}
+	}
+
+	rm_cmd = "cd " cht_tmp_dir " && rm -rf"
+	while (cht_tmp_aa > 0) {
+		cmd = rm_cmd
+		i = 0
+		while (cht_tmp_aa > 0) {
+			cmd = cmd " " cht_pid cht_user cht_tmp_aa--
+			if (++i > 20)
+				break
+		}
+
+		system(cmd)
+	}
+
+	system(rm_cmd " " cht_pid cht_user "*")
+	if (cht_monitor_dirty > 0)
+		printf "\r%79s\r", "" >"/dev/tty"
+}
+
+#
+# Η function `cht_abort' δέχεται ως πρώτη παράμετρο έναν αριθμό και
+# αν αυτός ο αριθμός είναι μη μηδενικός καθαρίζει τα temporary files
+# και κάνει exit(2), αλλιώς επιστρέφει. Ο λόγος που περνάμε μια
+# αριθμητική παράμετρο είναι για να μπορούμε να αθροίζουμε σφάλματα
+# και να περνάμε στο τέλος το άθροισμα· παραδείγματα θα βρείτε σε
+# functions που ακολουθούν.
+#
+
+function cht_abort(err, msg,			abort_msg) {
+	abort_msg = (cht_rpt ? "report" : "program") " aborted"
+	if (err + 0) {
+		cht_errmsg(msg != "" ? msg " (" abort_msg ")" : \
+			abort_msg)
+		cht_cleanup()
+		exit(2)
+	}
+}
+
+#
+# Η function `cht_fatal' τυπώνει μήνυμα λάθους και διακόπτει το
+# πρόγραμμα.
+#
+
+function cht_fatal(msg) {
+	if (msg == "")
+		msg = "fatal error(s)"
+
+	cht_errmsg(msg " (" (cht_rpt ? "report" : "program") \
+		" aborted)")
+	cht_rpt_cancel()
+	cht_cleanup()
+	exit(2)
+}
+
+#
+# Η function `cht_tmpck' ελέγχει το όνομα που της περνάμε ως μια και
+# μοναδική παράμετρο να είναι ασφαλές temporary file name. Ως ασφαλή
+# θεωρούνται τα files που βρίσκονται κάτω από το /local/tmp και δεν
+# περιέχουν ">" ή ".." strings. Η function επιστρέφει το file name.
+#
+
+function cht_tmpck(f) {
+	if ((match(f, cht_tmp_dir "/") == 1) && \
+		(f !~ />/) && (f !~ /\.\./))
+		return(f)
+
+	cht_fatal(f ": invalid output file name")
+}
+
+#
+# Η function `cht_ftrunc' μηδενίζει το file που της
+# περνάμε ως μοναδική παράμετρο. Η function είναι χρήσιμη, καθώς
+# κάποιες από τις functions που ακολουθούν κάνουν append σε ήδη
+# δημιουργημένα files. Η function επιστρέφει το όνομα του file.
+#
+
+function cht_ftrunc(f) {
+	if (f == "")
+		cht_fatal("ftrunc: missing file name")
+
+	close(f)
+	printf "" >f
+	close(f)
+	return(f)
+}
+
+#
+# Η function `cht_fdelete' διαγράφει (remove) το file που της περνάμε
+# ως μοναδική παράμετρο. Η function επιστρέφει το όνομα του file.
+#
+
+function cht_fdelete(f) {
+	if (f == "")
+		cht_fatal("fdelete: missing file name")
+
+	close(f)
+	system("rm -f " f)
+}
+
+#
+# Η function `cht_tmpname' χωρίς καμία παράμετρο επιστρέφει ένα
+# μοναδικό full pathname που μπορεί να χρησιμοποιηθεί με ασφάλεια ως
+# temporary file. Τα files δημιουργούνται στο directory `/local/tmp'
+# και τα ονόματά τους είναι της μορφής PPPPP.NN, όπου PPPPP είναι το
+# process id του καλούντος awk process και NN είναι ένας αύξων αριθμός.
+# Αν δοθεί παράμετρος `x', τότε επιστρέφεται full pathname της μορφής
+# /local/tmp/PPPPP.x, όπου PPPPP είναι το process id του καλούντος
+# process. Αν χρησιμοποιήσουμε temporary files θα πρέπει στο END
+# section να μην παραλείψουμε την `cht_cleanup'. Πάντως, έτσι κι
+# αλλιώς, σε τακτά χρονικά διαστήματα (cron), γίνεται εκκαθάριση
+# του /local/tmp directory.
+#
+
+function cht_tmpname(x) {
+	if (x == "") {
+		if (cht_tmp_aa >= 99)
+			cht_fatal("too many temporary files")
+
+		x = ++cht_tmp_aa
+	}
+
+	return(cht_ftrunc(cht_tmp_dir "/" cht_pid cht_user x))
+}
+
+#
+# Η function `cht_rpt_return' χρησιμοποιείται μέσα από τα subreports
+# για να επιστρέψουμε data στο κυρίως report. Τα data επιστρέφονται
+# σε array που περνάμε στις `cht_rpt_send' και `cht_rpt_close'. Το
+# array δεικτοδοτείται με indices που υπέχουν θέση ονόματος μεταβλητής,
+# π.χ. "tot_poso", ενώ η αντίστοιχη τιμή περνάει στο array στην
+# αντίστοιχη θέση. Ως πρώτη παράμετρο περνάμε τα data, ενώ ο index
+# περνά ως δεύτερη παράμετρος. Έτσι, αν θέλουμε π.χ. να "επιστρέψουμε"
+# την τιμή της μεταβλητής `tot_poso' από το subreport στο κυρίως report,
+# καλούμε (από το subreport) την function ως εξής:
+#
+#	cht_rpt_return(tot_poso, "tot_isp")
+#
+# οπότε η τιμή της `tot_poso' θα περιέχεται στο array επιστρεφόμενων
+# τιμών που δόθηκε ως παράμετρος στην κλήση της `cht_rpt_send' ή της
+# `cht_rpt_close'. Η function επιστρέφει την τιμή που περάσαμε, οπότε
+# μπορεί να κληθεί και πεπλεγμένα, π.χ.
+#
+#	print cht_lepta(cht_rpt_return(tot_poso, "tot_isp"))
+#
+#
+
+function cht_rpt_return(val, idx) {
+	print cht_sql_dat cht_subsep idx cht_subsep val
+	return(val)
+}
+
+#
+# Η function `cht_rpt_receive' καλείται μετά από αποστολή δεδομένων
+# ή control data σε subreport. Αφού κάνει flush το report pipe
+# παραλαμβάνει και τυπώνει το output του subreport μέχρι την παραλαβή
+# ενός end-of-data mark. Μέσα στα δεδομένα που παραλαμβάνει μπορεί να
+# βρίσκονται και επιστρεφόμενες τιμές από το subreport. Αυτές οι
+# γραμμές ξεκινούν με το return-data mark και αποτελούνται από τρία
+# πεδία: return-data mark, index, value. Οι γραμμές επιστρεφόμενων
+# τιμών δεν εκτυπώνονται, αλλά δημιουργούν εγγραφές στο array
+# επιστρεφόμενων τιμών που ίσως έχουμε περάσει ως παράμετρο στις
+# functions `cht_rpt_send' ή `cht_rpt_close'.
+#
+
+function cht_rpt_receive(rpt, results,		rec, a) {
+	while ((rpt |& getline rec) > 0) {
+		if (rec ~ "^" cht_sql_dat) {
+			if (split(rec, a, cht_subsep) != 3) {
+				cht_errmsg(rpt ": invalid data (<ESC>" \
+					substr(rec, 2) ")")
+				continue
+			}
+
+			results[a[2]] = a[3]
+			continue
+		}
+
+		if (rec == cht_sql_eod)
+			return
+
+		print rec
+	}
+
+	# Δεν καλώ την `cht_fatal' για να μην εισέλθω σε
+	# recursive infinite loop.
+
+	cht_errmsg(rpt ": broken pipe")
+	exit(2)
+}
+
+#
+# Η function `cht_rpt_send' δέχεται ως πρώτη παράμετρο ένα report-id
+# και αποστέλλει στο εν λόγω pipe το string που περνάμε ως δεύτερη
+# παράμετρο. Αν το data string είναι κενό τότε στέλνω στο pipe ένα
+# end-of-data string και παραλαμβάνω ό,τι αποτελέσματα έχει να μου
+# δώσει το pipe. Η παραλαβή γίνεται line by line και τα δεδομένα
+# εκτυπώνονται στο standard output. Παράλληλα ενημερώνεται το array
+# `cht_rpt_status' το οποίο είναι δεικτοδοτημένο με τα pipe command
+# lines και έχει τις παρακάτω τιμές:
+#
+# 1: Ενεργό pipe, έχει αποστείλει όλα τα δεδομένα.
+# 2: Ενεργό pipe, παραλαμβάνει δεδομένα.
+# 0: Το pipe δεν έχει ανοίξει ακόμα (ανενεργό).
+#
+# Κατά την αποστολή δεδομένων σε subreport φροντίζω να στείλω πρώτα
+# ένα begin-of-data sequence ακολουθούμενο από το input file name
+# και το input line number, ώστε το subreport να έχει σωστή αίσθηση
+# του input position. Το input file name "-" (standard input)
+# μετατρέπεται σε κενό· αυτό γίνεται έτσι κι αλλιώς μέσα από
+# chtawkrpt processes, αλλά ο έλεγχος γίνεται και εδώ καθώς η
+# cht_rpt_send μπορεί να κληθεί και μέσα από plain chtawk scripts
+# όπου περνάμε "με το χέρι" το FILENAME και το FNR. Αν θέλουμε,
+# μπορούμε να περάσουμε και τρίτη παράμετρο στην function που
+# θεωρείται array επιστρεφόμενων τιμών. Σ'αυτήν την περίπτωση,
+# και εφόσον έχουμε επιστροφές μέσω της `cht_rpt_return' από το
+# subreport, θα πάρουμε στο array αυτό τις επιστρεφόμενες τιμές
+# με τα indices που περάσαμε στην `cht_rpt_return'.
+#
+
+function cht_rpt_send(rpt, data, results,	rpt_pipe, i) {
+	delete results
+	if (rpt == "") {
+		cht_errmsg("rpt_send: null report-id (ignored)")
+		return(rpt)	# no results, return nothing
+	}
+
+	rpt_pipe = cht_rpt_command " " rpt
+	if (data != "") {
+		print cht_sql_bod "|" (cht_rpt_input_file == "-" ? \
+			"" : cht_rpt_input_file) "|" \
+			cht_rpt_input_line "|" data |& rpt_pipe
+		fflush(rpt_pipe)
+		cht_rpt_receive(rpt_pipe, results)
+		cht_rpt_status[rpt] = 2
+		return(cht_rpt_return_result(results))
+	}
+
+	if (cht_rpt_status[rpt] <= 0)
+		return(cht_rpt_return_result(results))
+
+	print cht_sql_eod |& rpt_pipe
+	fflush(rpt_pipe)
+	cht_rpt_receive(rpt_pipe, results)
+	cht_rpt_status[rpt] = 1
+	return(cht_rpt_return_result(results))
+}
+
+#
+# Η function `cht_rpt_return_result' επιστρέφει στην τύχη κάποια από
+# τις επιστρεφόμενες τιμές της `cht_rpt_send' ή της `cht_rpt_close'.
+# Στις περιπτώσεις που έχω μόνο μια επιστρεφόμενη τιμή, αυτό είναι
+# βολικό καθώς "γλιτώνω" μεταβλητές.
+#
+
+function cht_rpt_return_result(results,		i) {
+	for (i in results)
+		return(results[i])
+
+	return("")
+}
+
+#
+# Η function `cht_rpt_open' χρησιμοποιείται στις περιπτώσεις που
+# θέλουμε να ξεκινήσουμε awkrpt pipe χωρίς να του στείλουμε εξ αρχής
+# δεδομένα. Ως μια μοναδική παράμετρο περνάμε το pipe command line
+# string το οποίο χρησιμοποιείται γενικά ως report-id.
+#
+
+function cht_rpt_open(rpt) {
+	if (rpt == "") {
+		cht_errmsg("rpt_open: null report-id (ignored)")
+		return
+	}
+
+	if (cht_rpt_status[rpt] > 0)
+		return
+
+	printf "" |& (cht_rpt_command " " rpt)
+	cht_rpt_status[rpt] = 2
+}
+
+#
+# Η function `cht_rpt_close' κλείνει το report του οποίου το id
+# περνάμε ως μια μοναδική παράμετρο παραλαμβάνοντας (και τυπώνοντας)
+# όλα τα δεδομένα που αποστέλλει το εν λόγω report pipe. Αν δεν
+# περάσουμε παράμετρο ή το report-id είναι κενό τότε κλείνουν όλοι
+# τα ενεργά report pipes.
+#
+
+function cht_rpt_close(rpt, results, ndr,	rpt_pipe, rec) {
+	if (!ndr)
+		delete results
+
+	if (rpt != "") {
+		if (cht_rpt_status[rpt]) {
+			close(rpt_pipe = \
+				(cht_rpt_command " " rpt), "to")
+			cht_rpt_receive(rpt_pipe, results)
+			close(rpt_pipe)
+		}
+
+		delete cht_rpt_status[rpt]
+		return(cht_rpt_return_result(results))
+	}
+
+	for (rpt in cht_rpt_status)
+		cht_rpt_close(rpt, results, 1)
+
+	return(cht_rpt_return_result(results))
+}
+
+#
+# Η function `cht_rpt_cancel' κάνει ακριβώς την ίδια δουλειά με την
+# `cht_rpt_close' μόνο που κλείνει απευθείας το report-pipe χωρίς να
+# παραλάβει αποτελέσματα.
+#
+
+function cht_rpt_cancel(rpt) {
+	if (rpt != "") {
+		close(cht_rpt_command " " rpt)
+		delete cht_rpt_status[rpt]
+		return
+	}
+
+	for (rpt in cht_rpt_status)
+		cht_rpt_cancel(rpt)
+}
+
+#
+# Η function `cht_fprint' τυπώνει το file που της περνάμε ως πρώτη
+# παράμετρο στο standard output. Αν δώσουμε και δεύτερο file,
+# τότε το περιεχόμενο του πρώτου file γίνεται append στο δεύτερο file.
+# Η function κλείνει όλα τα εμπλεκόμενα αρχεία και επιστρέφει τον
+# αριθμό των γραμμών που διάβασε από το αρχείο.
+#
+
+function cht_fprint(file1, file2,		n, lin, err) {
+	if (file1 == "")
+		return(0)
+
+	close(file1)
+	if (file2 == "") {
+		for (n = 0; (err = (getline lin <file1)) > 0; n++)
+			print lin
+
+		close(file1)
+		if (err) {
+			cht_errmsg(file1 ": " ERRNO)
+			return(-1)
+		}
+
+		return(n)
+	}
+
+	for (n = 0; (err = (getline lin <file1)) > 0; n++)
+		print lin >>file2
+
+	close(file1)
+	close(file2)
+	if (err) {
+		cht_errmsg(file1 ": " ERRNO)
+		return(-1)
+	}
+
+	return(n)
+}
+
+#
+# Η function `cht_farray' δέχεται ως πρώτη παράμετρο ένα array το
+# οποίο θα δεικτοδοτήσει αριθμητικά (1-base) και θα περιέχει τις
+# γραμμές του file που δίνεται ως δεύτερη παράμετρος. Αν δεν δοθεί
+# δεύτερη παράμετρος ή το όνομα του file είναι κενό, τότε η function
+# τυπώνει τα στοιχεία του array στο standard output. Η function
+# επιστρέφει πάντα των αριθμό των γραμμών του array είτε διαβάζει
+# γραμμές, είτε τυπώνει. Στη θέση 0 του array τοποθετείται κατά το
+# διάβασμα το πλήθος των γραμμών που διάβασε (δηλαδή και το πλήθος
+# των στοιχείων του array). Η function κλείνει το file από το οποίο
+# διαβάζει γραμμές.
+# Η function μπορεί να τυπώσει και κομμάτια του array με δύο τρόπους:
+#
+# cht_farray(a, from, to)
+# -----------------------
+# Μ'αυτήν την κλήση τυπώνουμε από τη γραμμή `from' έως και τη
+# γραμμή `to'. Επιστρέφεται η τελευταία γραμμή που τυπώθηκε (`to').
+#
+# cht_farray(a, from, -1)
+# -----------------------
+# Τυπώνονται οι γραμμές από τη `from' μέχρι την επόμενη μη κενή
+# γραμμή. Επιστρέφεται ο index της γραμμής μετά την κενή.
+# Π.χ. αν δώσω cht_farray(a, 35, -1) και η πρώτη κενή γραμμή
+# μετά την 35 είναι στη θέση 42, θα τυπωθούν οι γραμμές από την 35
+# μέχρι και την 41 και θα επιστραφεί 43.
+#
+
+function cht_farray(arr, file,			i, lin, err, j, k) {
+	i += 0
+	if ((i == 0) && (file != "")) {
+		close(file)
+		delete arr
+		for (i = 0; (err = (getline lin <file)) > 0;)
+			arr[++i] = lin
+
+		close(file)
+		if (err) {
+			cht_errmsg(file ": " ERRNO)
+			delete arr
+			return(-1)
+		}
+
+		return(arr[0] = i)
+	}
+
+	if (!(0 in arr)) {
+		cht_errmsg("farray: invalid array (program error)")
+		return(-1)
+	}
+
+	if ((i += 0) > 0) {
+		j = file + 0
+		k = i + 0
+	}
+	else if (i == 0) {
+		j = 1
+		k = arr[0] + 0
+	}
+	else {
+		for (i = file + 0; arr[i] != ""; i++)
+			print arr[i]
+
+		return(i + 1)
+	}
+
+	for (i = j; i <= k; i++)
+		print arr[i]
+
+	return(i)
+}
+
+#
+# Η function `cht_addword' δέχεται ως παραμέτρους ένα string και μια
+# λέξη και προσθέτει στο string τη λέξη παρεμβάλλοντας ένα κενό, αν
+# αυτό είναι απαραίτητο. Τέλος, επιστρέφει το string.
+#
+
+function cht_addword(s, w) {
+	if (w == "")
+		return(s)
+
+	if (s == "")
+		return(w)
+
+	return(s " " w)
+}
+
+#
+# Η function `cht_date2ld' δέχεται ως μια μοναδική παράμετρο μια
+# ημερομηνία στο διάστημα [01/01/0200, 31/12/9999], και επιστρέφει
+# την ημερομηνία ως long (UNIFY internal date format).
+#
+
+function cht_date2ld(date,		data) {
+	if (cht_dttodmy(date))
+		return(data[1])
+
+	cht_sql_cmd("EXECUTE cht_date2ld(" date ");")
+	cht_sql_exec()
+	cht_sql_scan(data)
+	return(data[1])
+}
+
+#
+# Η function `cht_ld2date' δέχεται ως μια μοναδική παράμετρο έναν
+# long στο διάστημα [-653739, 2925637], και επιστρέφει την αντίστοιχη
+# ημερομηνία σύμφωνα με τον αλγόριθμο μετατροπής της UNIFY.
+#
+
+function cht_ld2date(n,		data) {
+	if (cht_numck(n, -653739, 2925637))
+		return(data[1])
+
+	cht_sql_cmd("EXECUTE cht_ld2date(" n ");")
+	cht_sql_exec()
+	cht_sql_scan(data)
+	return(data[1])
+}
+
+#
+# Η function `cht_meres' δέχεται ως παραμέτρους δύο ημερομηνίες, και
+# επιστρέφει το μεταξύ τους διάστημα σε ημέρες. Στις ημέρες αυτές
+# λογίζονται και τα άκρα του διαστήματος. Αν η δεύτερη ημερομηνία δεν
+# δοθεί ή είναι κενή, τότε τίθεται η τρέχουσα ημερομηνία.
+#
+
+function cht_meres(apo, eos,		meres) {
+	if (cht_dttodmy(apo))
+		return(meres)
+
+	if (cht_clipstr(eos) == "")
+		eos = cht_curdate()
+	else if (cht_dttodmy(eos))
+		return(meres)
+
+	return ((meres = cht_date2ld(eos) - cht_date2ld(apo)) < 0 ?
+		meres - 1 : meres + 1)
+}
+
+#
+# Η function `cht_dtmeres' δέχεται μια ημερομηνία και ένα πλήθος
+# ημερών (θετικό ή αρνητικό) και επιστρέφει την ημερομηνία μετά
+# ή πριν κατά τις ημέρες αυτές.
+#
+
+function cht_dtmeres(date, meres) {
+	return (cht_dttodmy(date) ? date : \
+		cht_ld2date(cht_date2ld(date) + meres))
+}
+
+#
+# Η function `cht_disekto' δέχεται ως παράμετρο ένα έτος και επιστρέφει
+# μη μηδενική τιμή όταν το έτος είναι δίσεκτο, αλλιώς επιστρέφει μηδέν.
+#
+
+function cht_disekto(year) {
+	if (year % 4)		# αν δεν διαιρείται με το 4 δεν είναι
+		return(0)	# δίσεκτο
+
+	if (year % 100)		# αν δεν διαιρείται με το 100 είναι
+		return(1)	# δίσεκτο
+
+	if (year % 400)		# αν δεν διαιρείται με το 400 δεν είναι
+		return(0)	# δίσεκτο
+
+	return(1)		# αλλιώς είναι δίσεκτο
+}
+
+#
+# Η function `cht_mdays' δέχεται ως παράμετρο τον μήνα, ή το έτος και
+# τον μήνα και επιστρέφει τις ημέρες του μήνα.
+#
+
+function cht_mdays(m, y,	errs) {
+	errs = 0
+	if ((m < 0) || (m > 12)) {
+		cht_errmsg("cht_mdays: " m ": invalid month")
+		errs++
+	}
+
+	if (y < 0) {
+		cht_errmsg("cht_mdays: " y ": invalid year")
+		errs++
+	}
+
+	if (errs)
+		cht_abort(errs)
+
+	return(m != 2 ? cht_month_days[m + 0] :\
+		(cht_disekto(y) ? 29 : 28))
+}
+
+#
+# Η function `cht_dmyck' δέχεται ως παράμετρο ένα array ημερομηνίας
+# (ημέρα, μήνας, έτος) και επιστρέφει μη μηδενική τιμή αν η ημερομηνία
+# δεν είναι σωστή, αλλιώς επιστρέφει μηδέν.
+#
+
+function cht_dmyck(dmy) {
+	if (((dmy[3] += 0) < 200) || (dmy[3] > 9999))
+		return(1)
+
+	if (((dmy[2] += 0) < 1) || (dmy[2] > 12))
+		return(1)
+
+	if (((dmy[1] += 0) < 1) || (dmy[1] > cht_mdays(dmy[2], dmy[3])))
+		return(1)
+
+	return(0)
+}
+
+#
+# Η function `cht_splitdt' δέχεται ως παράμετρο ένα string σε μορφή
+# ημερομηνίας και δημιουργεί array με ημέρες, μήνα και έτος. Η function
+# δεν ελέγχει την ημερομηνία, απλώς σπάζει το string σε τρία πεδία.
+# Αν δεν τα καταφέρει επιστρέφει μη μηδενική τιμή, αλλιώς επιστρέφει
+# μηδέν. Η function είναι εσωτερική και μάλλον δεν υπάρχει λόγος να
+# κληθεί απευθείας από το awk script.
+#
+
+function cht_splitdt(dt,	dmy) {
+	delete dmy
+	if (dt ~ /^[ \t]*[0-9]{1,2}\/[0-9]{1,2}\/[0-9]{1,4}[ \t]*$/)
+		split(dt, dmy, "/")
+	else if (dt ~ \
+		/^[ \t]*[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,4}[ \t]*$/)
+		split(dt, dmy, ".")
+	else if (dt ~ \
+		/^[ \t]*[0-9]{1,2}-[0-9]{1,2}-[0-9]{1,4}[ \t]*$/)
+		split(dt, dmy, "-")
+	else
+		return(1)
+
+	dmy[1] = dmy[1] + 0
+	dmy[2] = dmy[2] + 0
+	dmy[3] = dmy[3] + 0
+	return(0)
+}
+
+#
+# Η function `cht_dttodmy' δέχεται ως παράμετρο μια ημερομηνία και
+# ένα array και σπάζει την ημερομηνία σε ημέρα, μήνα και έτος. Αν
+# η ημερομηνία δεν είναι δεκτή επιστρέφει μη μηδενική τιμή, αλλιώς
+# επιστρέφει μηδέν. Αν δοθεί μόνο ημερομηνία (χωρίς το array), τότε
+# η function μπορεί να χρησιμοποιηθεί απλά για έλεγχο της ημερομηνίας.
+# Θα μπορούσαμε να χρησιμοποιήσουμε τις `cht_splitdt' και `cht_dmyck'
+# αλλά επαναλαμβάνουμε τον κώδικα για μεγαλύτερη ταχύτητα.
+#
+
+function cht_dttodmy(dt, dmy) {
+	delete dmy
+	if (dt ~ /^[ \t]*[0-9]{1,2}\/[0-9]{1,2}\/[0-9]{1,4}[ \t]*$/)
+		split(dt, dmy, "/")
+	else if (dt ~ \
+		/^[ \t]*[0-9]{1,2}\.[0-9]{1,2}\.[0-9]{1,4}[ \t]*$/)
+		split(dt, dmy, ".")
+	else if (dt ~ \
+		/^[ \t]*[0-9]{1,2}-[0-9]{1,2}-[0-9]{1,4}[ \t]*$/)
+		split(dt, dmy, "-")
+	else
+		return(1)
+
+	if ((dmy[1] += 0) < 1)
+		return(1)
+
+	if (((dmy[2] += 0) < 1) || (dmy[2] > 12))
+		return(1)
+
+	if ((dmy[3] += 0) < 200)
+		return(1)
+
+	if ((dmy[1] > 28) && (dmy[1] > cht_mdays(dmy[2], dmy[3])))
+		return(1)
+
+	return(0)
+}
+
+#
+# Η function `cht_curdate' επιστρέφει την τρέχουσα ημερομηνία. Αν
+# δοθεί παράμετρος, τότε αυτή θεωρείται DMY array (ημέρα, μήνας, έτος)
+# και συμπληρώνεται με τα στοιχεία της τρέχουσας ημερομηνίας.
+#
+
+function cht_curdate(dmy,		date) {
+	if (cht_dttodmy(date = strftime("%d/%m/%Y"), dmy))
+		cht_fatal("curdate: fatal error")
+
+	return(date)
+}
+
+#
+# Η function `cht_time' επιστρέφει την τρέχουσα ωρολογιακή ώρα. Αν
+# δοθεί παράμετρος, τότε αυτή θεωρείται HM array (ώρα, λεπτό)
+# και συμπληρώνεται με τα στοιχεία της τρέχουσας ώρας.
+#
+
+function cht_curtime(hm,		time) {
+	if (split(time = strftime("%H:%M"), hm, ":") != 2)
+		cht_fatal("curtime: fatal error")
+
+	return(time)
+}
+
+function cht_curyear(offset,			dmy) {
+	cht_curdate(dmy)
+	return(dmy[3] + (offset + 0))
+}
+
+#
+# Η function `cht_dmytodt' δέχεται ως παράμετρο ένα array ημερομηνίας
+# (ημέρα, μήνας, έτος) και επιστρέφει την αντίστοιχη ημερομηνία ως
+# string.
+#
+
+function cht_dmytodt(dmy) {
+	return (cht_dmyck(dmy) ? "" : sprintf("%02d/%02d/%04d", \
+		dmy[1], dmy[2], dmy[3]))
+}
+
+#
+# Η function `cht_fixdmy' δέχεται ένα array ημερομηνίας με ημέρες
+# που μπορούν να υπερβαίνουν τις πραγματικές ημέρες του μήνα (όχι
+# όμως πάνω από 31 και κάτω από 1) και επιστρέφει τη σωστή ημερομηνία.
+#
+
+function cht_fixdmy(dmy,	dt) {
+	if ((dmy[1] == 0) || (dmy[2] == 0) || (dmy[3] == 0))
+		return(dt)
+
+	if (dmy[1] < 32) {
+		for (; dmy[1] > 0; dmy[1]--) {
+			if ((dt = cht_dmytodt(dmy)) != "")
+				return(dt)
+		}
+	}
+
+	cht_fatal("fixdmy: invalid date")
+}
+
+#
+# Η function `cht_fixdt' δέχεται ως παράμετρο μια ημερομηνία με
+# ημέρες που μπορούν να υπερβαίνουν τις πραγματικές ημέρες του
+# μήνα (όχι όμως πάνω από 31 και κάτω από 1) και επιστρέφει τη
+# σωστή ημερομηνία. Αν δοθεί και δεύτερη παράμετρος, τότε αυτή
+# θεωρείται DMY array και γεμίζει με τα σωστά στοιχεία (ημέρα,
+# μήνας, έτος).
+#
+
+function cht_fixdt(dt, dmy) {
+	cht_splitdt(dt, dmy)
+	return(cht_fixdmy(dmy))
+}
+
+#
+# Η function `cht_dterror' δέχεται ως παράμετρο μια (λανθασμένη)
+# ημερομηνία και τυπώνει μήνυμα λάθους στο standard error. Η function
+# επιστρέφει μη μηδενική τιμή και χρησιμοποιείται απλά για πύκνωση
+# του κώδικα. Αν δοθεί και δεύτερη (μη κενή) παράμετρος, τότε
+# εκτυπώνεται ως μήνυμα λάθους αντί του default "invalid date".
+#
+
+function cht_dterror(dt, msg) {
+	cht_errmsg(dt ": " (msg != "" ? msg : "invalid date"))
+	return(1)
+}
+
+#
+# Η function `cht_dateck' δέχεται ως παράμετρο μια ημερομηνία (ως
+# string) την οποία ελέγχει. Σε περίπτωση που η ημερομηνία είναι
+# λανθασμένη, τότε εκτυπώνεται μήνυμα λάθους και επιστρέφεται μη
+# μηδενική τιμή, ελλιώς επιστρέφει μηδέν.
+#
+# Μπορούμε να περάσουμε ως δεύτερη παράμετρο ένα (μη κενό) string
+# το οποίο θα εκτυπωθεί ως μήνυμα λάθους αντί του default "invalid
+# date". Μπορούμε ακόμη να περάσουμε και ως τρίτη παράμετρο ένα
+# DMY array στο οποίο αναλύεται η ημερομηνία ως day, month, year.
+#
+
+function cht_dateck(date, msg, dmy) {
+	return (cht_dttodmy(date, dmy) ? cht_dterror(date, msg) : 0)
+}
+
+#
+# Η function `cht_tmerror' δέχεται ως παράμετρο μια (λανθασμένη)
+# ώρα και τυπώνει μήνυμα λάθους στο standard error. Η function
+# επιστρέφει μη μηδενική τιμή και χρησιμοποιείται απλά για πύκνωση
+# του κώδικα.
+#
+
+function cht_tmerror(tm) {
+	cht_errmsg(tm ": invalid time")
+	return(1)
+}
+
+#
+# Η function `cht_errdate' δέχεται ως παράμετρο μια ημερομηνία και,
+# αφού την ελέγξει, επιστρέφει μηδέν αν είναι δεκτή, αλλιώς τυπώνει
+# μήνυμα λάθους και επιστρέφει μη μηδενική τιμή. Αν δοθεί και δεύτερη
+# παράμετρος, τότε αυτή θεωρείται array και συμπληρώνεται με ημέρα,
+# μήνα και έτος.
+#
+
+function cht_errdate(dt, dmy) {
+	if (cht_dttodmy(dt, dmy))
+		return(cht_dterror(dt))
+
+	return(0)
+}
+
+#
+# Η function `cht_errtime' δέχεται ως παράμετρο μια ώρα και,
+# αφού την ελέγξει, επιστρέφει μηδέν αν είναι δεκτή, αλλιώς τυπώνει
+# μήνυμα λάθους και επιστρέφει μη μηδενική τιμή. Αν δοθεί και δεύτερη
+# παράμετρος, τότε αυτή θεωρείται array και συμπληρώνεται με ώρα
+# και λεπτό.
+#
+
+function cht_errtime(tm, hm) {
+	if (cht_tmtohm(tm, hm))
+		return(cht_tmerror(tm))
+
+	return(0)
+}
+
+#
+# Η function `cht_dmycmp' δέχεται ως παραμέτρους δύο arrays ημερομηνίας
+# (ημέρα, μήνας, έτος) και τα συγκρίνει. Αν η πρώτη ημερομηνία είναι
+# μικρότερη από τη δεύτερη επιστρέφει -1. Αν η πρώτη ημερομηνία είναι
+# μεγαλύτερη από τη δεύτερη επιστρέφει 1. Αν είναι ίσες επιστρέφει 0.
+#
+
+function cht_dmycmp(dmy1, dmy2) {
+	if (dmy1[3] < dmy2[3])
+		return(-1)
+
+	if (dmy1[3] > dmy2[3])
+		return(1)
+
+	if (dmy1[2] < dmy2[2])
+		return(-1)
+
+	if (dmy1[2] > dmy2[2])
+		return(1)
+
+	if (dmy1[1] < dmy2[1])
+		return(-1)
+
+	if (dmy1[1] > dmy2[1])
+		return(1)
+
+	return(0)
+}
+
+#
+# Η function `cht_dtcmp' δέχεται ως παραμέτρους δύο ημερομηνίες
+# και τις συγκρίνει. Αν η πρώτη είναι μικρότερη από τη δεύτερη
+# επιστρέφει -1. Αν η πρώτη είναι μεγαλύτερη από τη δεύτερη
+# επιστρέφει 1. Αν είναι ίσες επιστρέφει 0. Αν η πρώτη ημερομηνία
+# είναι λανθασμένη επιστρέφει 2. Αν η δεύτερη ημερομηνία είναι
+# λανθασμένη επιστρέφει 3. Αν και οι δύο ημερομηνίες είναι
+# λανθασμένες επιστρέφει 4. Στις περιπτώσεις αυτές (λανθασμένες
+# ημερομηνίες) τυπώνονται και σχετικά μηνύματα λάθους. Μπορούμε
+# να δώσουμε και άλλες δύο παραμέτρους οι οποίες θεωρούνται arrays
+# και συμπληρώνονται με ημέρα, μήνα και έτος για τις δύο ημερομηνίες.
+#
+
+function cht_dtcmp(dt1, dt2, dmy1, dmy2,	ret) {
+	ret = 0
+	if (cht_errdate(dt1, dmy1))
+		ret = 2
+
+	if (cht_errdate(dt2, dmy2)) {
+		if (ret)
+			ret = 4
+		else
+			ret = 3
+	}
+
+	if (ret)
+		return(ret)
+
+	return(cht_dmycmp(dmy1, dmy2))
+}
+
+#
+# Η function `cht_hmcmp' δέχεται ως παραμέτρους δύο arrays ώρας
+# (ώρα, λεπτό) και τα συγκρίνει. Αν η πρώτη ώρα είναι μικρότερη
+# από τη δεύτερη επιστρέφει -1. Αν η πρώτη ώρα είναι
+# μεγαλύτερη από τη δεύτερη επιστρέφει 1. Αν είναι ίσες επιστρέφει 0.
+#
+
+function cht_hmcmp(hm1, hm2) {
+	if (hm1[1] < hm2[1])
+		return(-1)
+
+	if (hm1[1] > hm2[1])
+		return(1)
+
+	if (hm1[2] < hm2[2])
+		return(-1)
+
+	if (hm1[2] > hm2[2])
+		return(1)
+
+	return(0)
+}
+
+#
+# Η function `cht_tmcmp' δέχεται ως παραμέτρους δύο ώρες
+# και τις συγκρίνει. Αν η πρώτη είναι μικρότερη από τη δεύτερη
+# επιστρέφει -1. Αν η πρώτη είναι μεγαλύτερη από τη δεύτερη
+# επιστρέφει 1. Αν είναι ίσες επιστρέφει 0. Αν η πρώτη ώρα
+# είναι λανθασμένη επιστρέφει 2. Αν η δεύτερη ώρα είναι
+# λανθασμένη επιστρέφει 3. Αν και οι δύο ώρες είναι
+# λανθασμένες επιστρέφει 4. Στις περιπτώσεις αυτές (λανθασμένες
+# ώρες) τυπώνονται και σχετικά μηνύματα λάθους. Μπορούμε
+# να δώσουμε και άλλες δύο παραμέτρους οι οποίες θεωρούνται arrays
+# και συμπληρώνονται με ώρα και λεπτό για τις δύο ημερομηνίες.
+#
+
+function cht_tmcmp(tm1, tm2, hm1, hm2,	ret) {
+	ret = 0
+	if (cht_errtime(tm1, hm1))
+		ret = 2
+
+	if (cht_errtime(tm2, hm2)) {
+		if (ret)
+			ret = 4
+		else
+			ret = 3
+	}
+
+	if (ret)
+		return(ret)
+
+	return(cht_hmcmp(hm1, hm2))
+}
+
+#
+# Η function `cht_meres2xmi' δέχεται ως παράμετρο ημέρες και
+# επιστρέφει τις ημέρες αυτές ως χρόνια, μήνες, ημέρες, π.χ.
+# για 393 ημέρες θα επιστρέψει 10103 (1 χρόνος, 1 μήνας και 3 ημέρες).
+#
+
+function cht_meres2xmi(meres,		sp, xronia, mines) {
+	if (meres > 0)
+		sp = 1
+	else if (meres < 0) {
+		sp = -1
+		meres = -meres
+	}
+	else
+		return(0)
+
+	xronia = int(meres / 360)
+	meres -= (xronia * 360)
+	mines = int(meres / 30)
+	meres -= (mines * 30)
+	while (meres >= 30) {
+		meres -= 30
+		mines++
+	}
+
+	while (mines >= 12) {
+		mines -= 12
+		xronia++
+	}
+
+	return(((xronia * 10000) + (mines * 100) + meres) * sp)
+}
+
+#
+# Η function `cht_xmi2meres' δέχεται ως παράμετρο ένα χρονικό
+# διάστημα σε xmi format (χρόνια, μήνες, ημέρες) και επιστρέφει
+# το διάστημα αυτό σε ημέρες, π.χ. για το διάστημα 30228 (3 χρόνια,
+# 2 μήνες και 3 ημέρες) θα επιστραφεί 1168 (ημέρες). Αν δοθεί και
+# δεύτερη παράμετρος, τότε αυτή θεωρείται array xmi και επιστρέφονται
+# μέσω του array αυτού τα χρόνια, οι μήνες και οι μέρες στις θέσεις
+# 1, 2 και 3 αντίστοιχα.
+#
+
+function cht_xmi2meres(xmi, xmi_array,			sp, xronia, \
+	mines, meres) {
+	delete xmi_array
+	if (xmi > 0)
+		sp = 1
+	else if (xmi < 0) {
+		sp = -1
+		xmi = -xmi
+	}
+	else
+		return(0)
+
+	meres = xmi % 100
+	mines = ((xmi - meres) / 100) % 100
+	xronia = (xmi - (mines * 100) - meres) / 10000
+
+	xmi_array[1] = xronia * sp
+	xmi_array[2] = mines * sp
+	xmi_array[3] = meres * sp
+
+	return(((xronia * 360) + (mines * 30) + meres) * sp)
+}
+
+#
+# Η function `cht_xmixmi' δέχεται δύο χρονικά διαστήματα σε xmi format
+# και επιστρέφει το άθροισμα των δύο σε xmi format.
+#
+
+function cht_xmixmi(xmi1, xmi2) {
+	return(cht_meres2xmi(cht_xmi2meres(xmi1) + cht_xmi2meres(xmi2)))
+}
+
+#
+# Η function `cht_ddxmi' δέχεται δύο ημερομηνίες και επιστρέφει
+# έναν αριθμό με format ΧΧΧΧΜΜΗΗ, όπου ΧΧΧΧ είναι χρόνια, ΜΜ είναι
+# μήνες και ΗΗ ημέρες. Πρόκειται για το διάστημα μεταξύ των δύο
+# ημερομηνιών σε χρόνια, μήνες, μέρες. Στο διάστημα συμπεριλαμβάνονται
+# και τα άκρα του διαστήματος.
+#
+
+function cht_ddxmi(dt1, dt2,	cmp, dmy1, dmy2,\
+	d1, m1, y1, d2, m2, y2) {
+	if ((cmp = cht_dtcmp(dt1, dt2, dmy1, dmy2)) > 1)
+		return(0)
+
+	if (!cmp)
+		return(1)	# μία ημέρα
+
+	if (cmp > 0) {
+		d1 = dmy2[1]
+		m1 = dmy2[2]
+		y1 = dmy2[3]
+		d2 = dmy1[1]
+		m2 = dmy1[2]
+		y2 = dmy1[3]
+		cmp = -1
+	}
+	else {
+		d1 = dmy1[1]
+		m1 = dmy1[2]
+		y1 = dmy1[3]
+		d2 = dmy2[1]
+		m2 = dmy2[2]
+		y2 = dmy2[3]
+		cmp = 1
+	}
+
+	if (d2 >= 30) {
+		d2 = 1
+		m2++
+		if (m2 > 12) {
+			m2 = 1
+			y2++
+		}
+	}
+	else
+		d2++
+	
+
+	if (d2 < d1) {
+		d2 += 30
+		m2--
+	}
+
+	if (m2 < m1) {
+		m2 += 12
+		y2--
+	}
+
+	return(cmp * (((y2 - y1) * 10000) +\
+		((m2 - m1) * 100) + (d2 - d1)))
+}
+
+#
+# Η function `cht_ddmeres' δέχεται ως παραμέτρους δύο ημερομηνίες
+# και επιστρέφει το εν λόγω διάστημα σε ημέρες. Στο επιστρεφόμενο
+# διάστημα συμπεριλαμβάνονται τα άκρα του διαστήματος.
+#
+
+function cht_ddmeres(date1, date2) {
+	return(cht_xmi2meres(cht_ddxmi(date1, date2)))
+}
+
+#
+# Η function `cht_datemeres' δέχεται ως πρώτη παράμετρο μια ημερομηνία
+# και ως δεύτερη παράμετρο ένα χρονικό διάστημα (σε ημέρες). Επιστρέφει
+# νέα ημερομηνία που προκύπτει από μετατόπιση της δοθείσης ημερομηνίας
+# κατά τις ημέρες που δόθηκαν. Αν οι ημέρες είναι θετικές, τότε η
+# επιστρεφόμενη ημερομηνία είναι μεταγενέστερη κατά το δοθέν διάστημα,
+# αλλιώς είναι προγενέστερη κατά το δοθέν διάστημα. Αν παρουσιαστεί
+# οποιοδήποτε πρόβλημα, τότε η function επιστρέφει σιωπηρά την ίδια
+# ημερομηνία, ακόμη κι αν αυτή ήταν λανθασμένη.
+#
+
+function cht_datemeres(date, meres,		dmy, sp, \
+	xronia, mines) {
+	if (cht_dttodmy(date, dmy))
+		return(date)
+
+	if ((meres = sprintf("%.0f", meres)) > 0)
+		sp = 1
+	else if (meres < 0) {
+		sp = -1
+		meres = -meres
+	}
+	else
+		return(date)
+
+	xronia = int(meres / 360)
+	meres -= (xronia * 360)
+	mines = int(meres / 30)
+	meres -= (mines * 30)
+
+	dmy[3] += (xronia * sp)
+	dmy[2] += (mines * sp)
+	dmy[1] += (meres * sp)
+
+	while (dmy[1] > 30) {
+		dmy[1] -= 30
+		dmy[2]++
+	}
+
+	while (dmy[1] <= 0) {
+		dmy[1] += 30
+		dmy[2]--
+	}
+
+	while (dmy[2] > 12) {
+		dmy[2] -= 12
+		dmy[3]++
+	}
+
+	while (dmy[2] <= 0) {
+		dmy[2] += 12
+		dmy[3]--
+	}
+
+	return (dmy[3] < 0 ? date : cht_dmytodt(dmy))
+}
+
+#
+# Η function `cht_datexmi' δέχεται μια ημερομηνία και ένα διάστημα
+# σε xmi format, και επιτρέφει την ημερομηνία μετατοπισμένη κατά
+# το δοθέν διάστημα.
+#
+
+function cht_datexmi(date, xmi) {
+	return(cht_datemeres(date, cht_xmi2meres(xmi)))
+}
+
+#
+# Η function `cht_hmck' δέχεται ως παράμετρο ένα array ώρας (ώρα,
+# λεπτό) και ελέγχει αν τα στοιχεία του array παριστάνουν σωστή ώρα.
+# Αν τα στοιχεία είναι σωστά επιστρέφει μηδέν, αλλιώς επιστρέφει μη
+# μηδενική τιμή.
+#
+
+function cht_hmck(hm) {
+	if ((hm[1] < 0) || (hm[1] > 23))
+		return(1)
+
+	if ((hm[2] < 0) || (hm[2] > 59))
+		return(1)
+
+	return(0)
+}
+
+#
+# Η function `cht_tmtohm' δέχεται ως παράμετρο μια TIME expression και
+# ένα array και σπάζει την expression σε ώρα και λεπτό. Αν η ώρα δεν
+# είναι σωστή επιστρέφει μη μηδενική τιμή, αλλιώς επιστρέφει μηδέν. Αν
+# δοθεί μόνο time expression (χωρίς το array), τότε η function μπορεί
+# να χρησιμοποιηθεί απλά για έλεγχο της ώρας.
+#
+
+function cht_tmtohm(tm, hm) {
+	if (split(tm, hm, "[:-]") != 2)
+		return(1)
+
+	if (((hm[1] += 0) < 0) || (hm[1] > 23))
+		return(1)
+
+	if (((hm[2] += 0) < 0) || (hm[2] > 59))
+		return(1)
+
+	return(0)
+}
+
+#
+# Η function `cht_hmtotm' δέχεται ως παράμετρο ένα array ώρας (ώρα,
+# λεπτό) και επιστρέφει την αντίστοιχη time expression ως string.
+#
+
+function cht_hmtotm(hm,		tm) {
+	if (!cht_hmck(hm))
+		tm = sprintf("%02d:%02d", hm[1], hm[2])
+
+	return(tm)
+}
+
+#
+# Η function `cht_round' δέχεται ως παράμετρο έναν αριθμό και
+# (προαιρετικά) ένα πλήθος δεκαδικών ψηφίων. Επιστρέφεται ο
+# αριθμός στογγυλοποιημένος στα δεκαδικά που δόθηκαν.
+#
+
+function cht_round(x, dec,		deka, a, num, nd) {
+	nd = dec
+	for (deka = 1; dec > 0; dec--) deka *= 10
+	x = sprintf("%.10f", x * deka)
+	split(x, a, /\./); num = a[1] + 0
+	return (sprintf("%.*f", nd, (a[2] ~ /^[5-9]/ ? \
+		(num + (x ~ /^-/ ? -1 : 1)) : num) / deka) + 0)
+}
+
+#
+# Η function `cht_triad' δέχεται ως παράμετρο έναν αριθμό και
+# επιστρέφει τον αριθμό χωρίζοντας χιλιάδες, εκατομμύρια κλπ.
+# Μπορούμε να περάσουμε και δεύτερη παράμετρο που δείχνει το
+# πλήθος των δεκαδικών ψηφίων που θα τυπωθούν· by default ο
+# αριθμός στρογγυλοποιείται στον κοντινότερο ακέραιο.
+#
+
+function cht_triad(x, dec,			num) {
+	for (num = (x + 0 < 0 ? \
+		sprintf("-%.*f", dec + 0, cht_tiny - x) : \
+		sprintf("+%.*f", dec + 0, x + cht_tiny)) "@"; \
+		num ~ /[-+][0-9]{4}/;)
+		sub(/[0-9]{3}[,.@]/, ",&", num)
+
+	gsub("[+@]", "", num)
+	return(num)
+}
+
+#
+# Η function `cht_sptriad' είναι ίδια με την `cht_triad' με μόνη
+# διαφορά ότι στο επιστρεφόμενο string υπάρχει και πρόσημο είτε
+# ο αριθμός είναι αρνητικός είτε θετικός. Αν ο αριθμός είναι
+# μηδενικός, τότε επιστρέφεται το string που περνάμε ως τρίτη
+# παράμετρο.
+#
+
+function cht_sptriad(x, dec, zero) {
+	if (x > 0)
+		return("+" cht_triad(x, dec))
+
+	if (x < 0)
+		return(cht_triad(x, dec))
+
+	return(zero)
+}
+
+#
+# Η function `cht_ztriad' είναι ίδια με την `cht_triad' με μόνη
+# διαφορά ότι όταν ο αριθμός είναι μηδενικός, τότε επιστρέφεται
+# το κενό string.
+#
+
+function cht_ztriad(x, dec, zero) {
+	return (x ? cht_triad(x, dec) : zero)
+}
+
+#
+# Η function `cht_fltprint' δέχεται ως παράμετρο έναν δεκαδικό
+# και επιστρέφει τον αριθμό αποκόπτοντας τα τελευταία μηδενικά
+# μετά την υποδιαστολή. Ως δεύτερη παράμετρο μπορούμε να περάσουμε
+# το πλήθος των δεκαδικών ψηφίων σύμφωνα με τα οποία στρογγυλοποιείται
+# ο αριθμός.
+#
+
+function cht_fltprint(x, dec,		num) {
+	num = cht_round(x, dec)
+	if (dec <= 0)
+		return(num)
+
+	sub(/0+$/, "", num)
+	return(num)
+}
+
+function cht_fltxls(x,		num) {
+	num = cht_round(x / 100.0, 2)
+	sub(/\./, ",", num)
+	return(num)
+}
+
+#
+# Η function `cht_lex100' δεν καλείται συνήθως απευθείας μέσα από awk
+# scripts, αλλά αποτελεί την καρδιά της `cht_lexevro' που μετατρέπει
+# ποσά σε λεκτικό (ευρώ/λεπτά). Δέχεται ως πρώτη παράμετρο έναν αριθμό
+# από 1 έως 999 και επιστρέφει το αντίστοιχο λεκτικό, π.χ. 324 ->
+# "ΤΡΙΑΚΟΣΙΑ ΕΙΚΟΣΙ ΤΕΣΣΕΡΑ". Αν δοθεί και δεύτερη (μη μηδενική)
+# παράμετρος, τότε το λεκτικό επιστρέφεται σε θηλυκό γένος, π.χ.
+# 324 -> "ΤΡΙΑΚΟΣΙΕΣ ΕΙΚΟΣΙ ΤΕΣΣΕΡΙΣ".
+#
+
+function cht_lex100(n, thiliko,		ret, mon, dec, eka) {
+	ret = ""
+	if ((n < 1) || (n > 999))
+		return ret
+
+	if (n == 100)
+		return "ΕΚΑΤΟ"
+
+	dec = ((n - (mon = n % 10)) / 10) % 10
+	if ((eka = (n - (dec * 10) - mon) / 100) > 0) {
+		if (thiliko)
+			ret = cht_ekalex_T[eka]
+		else
+			ret = cht_ekalex_O[eka]
+	}
+
+	if ((dec == 1) && (mon == 1))
+		return(cht_addword(ret, "ΕΝΤΕΚΑ"))
+
+	if ((dec == 1) && (mon == 2))
+		return(cht_addword(ret, "ΔΩΔΕΚΑ"))
+
+	if (dec > 0)
+		ret = cht_addword(ret, cht_declex[dec])
+
+	if (mon <= 0)
+		return(ret)
+
+	if (thiliko)
+		return(cht_addword(ret, cht_monlex_T[mon]))
+
+	return(cht_addword(ret, cht_monlex_O[mon]))
+}
+
+#
+# Η function `cht_lexevro' δέχεται ως παράμετρο ένα ποσό (float) και
+# επιστρέφει το λεκτικό.
+#
+
+function cht_lexevro(x,		buf, mion, a, ret,\
+	tri, dis, mir, xil, eka, n, b, s_evro) {
+	if (substr(buf = cht_triad(x, 2), 1, 1) == "-") {
+		mion = "ΜΕΙΟΝ "
+		buf = substr(buf, 2)
+	}
+
+	if (split(buf, a, ".") != 2)
+		return(ret)
+
+	tri = 0		# τρισεκατομμύρια
+	dis = 0		# δισεκατομμύρια
+	mir = 0		# εκατομμύρια
+	xil = 0		# χιλιάδες
+	eka = 0		# εκατοντάδες
+	if ((n = split(a[1], b, ",")) == 5) {
+		tri += b[1]
+		dis += b[2]
+		mir += b[3]
+		xil += b[4]
+		eka += b[5]
+	}
+	else if (n == 4) {
+		dis += b[1]
+		mir += b[2]
+		xil += b[3]
+		eka += b[4]
+	}
+	else if (n == 3) {
+		mir += b[1]
+		xil += b[2]
+		eka += b[3]
+	}
+	else if (n == 2) {
+		xil += b[1]
+		eka += b[2]
+	}
+	else if (n == 1)
+		eka += b[1]
+	else
+		return(ret)
+
+	if (tri > 0)
+		ret = cht_addword(ret, cht_lex100(tri) \
+			" ΤΡΙΣΕΚΑΤΟΜΜΥΡΙ" (tri > 1 ? "Α" : "Ο"))
+
+	if (dis > 0)
+		ret = cht_addword(ret, cht_lex100(dis) \
+			" ΔΙΣΕΚΑΤΟΜΜΥΡΙ" (dis > 1 ? "Α" : "Ο"))
+
+	if (mir > 0)
+		ret = cht_addword(ret, cht_lex100(mir) \
+			" ΕΚΑΤΟΜΜΥΡΙ" (mir > 1 ? "Α" : "Ο"))
+
+	if (xil > 1)
+		ret = cht_addword(ret, cht_lex100(xil, 1) " ΧΙΛΙΑΔΕΣ")
+	else if (xil == 1)
+		ret = cht_addword(ret, "ΧΙΛΙΑ")
+
+	if (eka)
+		ret = cht_addword(ret, cht_lex100(eka))
+
+	s_evro = " ΕΥΡΩ"
+	if (a[2] <= 0) {
+		if (ret == "")
+			ret = "ΜΗΔΕΝ"
+
+		return(mion ret s_evro)
+	}
+
+	if (ret != "")
+		ret = ret s_evro " ΚΑΙ "
+
+	if (a[2] == 1)
+		ret = ret "ΕΝΑ ΛΕΠΤΟ"
+	else
+		ret = ret cht_lex100(a[2]) " ΛΕΠΤΑ"
+
+	return(mion ret)
+}
+
+function cht_lexlepta(cents) {
+	return(cht_lexevro(cents / 100))
+}
+
+function cht_lexposo(x,				s) {
+	s = cht_lexevro(x)
+	sub(" ΚΑΙ ", " ΚΟΜΜΑ ", s)
+	gsub(" (ΛΕΠΤ(Α|Ο)|ΕΥΡΩ)", "", s)
+	return(s)
+}
+
+#
+# Η function `cht_evro' δέχεται ως πρώτη παράμετρο ένα ποσό (σε ΕΥΡΩ)
+# και επιστρέφει το ποσό αυτό εκτυπωμένο ως ποσό (μέσω της `cht_triad').
+# Αν θέλουμε μπορούμε να περάσουμε και ως δεύτερη παράμετρο ένα πλάτος,
+# οπότε το ποσό τυπώνεται στοιχισμένο δεξιά στο πλάτος αυτό. Τέλος, ως
+# τρίτη παράμετρο μπορούμε να περάσουμε έναν fill χαρακτήρα, οπότε το
+# padding από αριστερά θα γίνει με αυτόν τον χαρακτήρα αντί του κενού
+# που γίνεται by default. Ως τέταρη παράμετρο μπορούμε να περάσουμε
+# μια μη μηδενική τιμή που θα σημαίνει εκτύπωση και των μηδενικών
+# ποσών τα οποία by default εκτυπώνονται ως κενά.
+#
+
+function cht_evro(x, width, fill, miden) {
+	x = (((x + 0) || miden) ? cht_triad(x, 2) : "")
+	if (width < 0.5)
+		return(x)
+
+	return(cht_tab(x, width, "R", fill))
+}
+
+function cht_lepta(cents, width, fill, miden) {
+	return(cht_evro(cents / 100, width, fill, miden))
+}
+
+#
+# Η function `cht_clipstr' δέχεται ως πρώτη παράμετρο ένα string
+# και επιστρέφει το string αποκόπτοντας τους "λευκούς" χαρακτήρες
+# από την αρχή και το τέλος του string. Αν δοθεί και δεύτερη (μη
+# μηδενική) παράμετρος, τότε αποκόπτονται οι λευκοί χαρακτήρες μόνο
+# από το τέλος του string. Η function λειτουργεί πολύ ταχύτερα
+# με χρήση της standard `sub' function παρά με loops που βασίζονται
+# στη `substr'. Δοκιμάστηκε και η `gsub' με σύνθετο regular expression
+# αλλά φαίνεται να δίνει χειρότερους χρόνους.
+# 
+
+function cht_clipstr(s, end_only) {
+	if (!end_only)
+		sub("^[ \t]+", "", s)
+
+	sub("[ \t]+$", "", s)
+	return(s)
+}
+
+#
+# Η function `cht_split' δέχεται ως παραμέτρους ένα string, ένα
+# array και (προαιρετικά) ένα separator string (default pipe) και
+# διασπά το string σε πεδία τα οποία τοποθετεί στο array. Η function
+# κάνει μπρος-πίσω αποκοπή κενών από τα πεδία και επιστρέφει το πλήθος
+# των πεδίων. Είναι καλύτερα (από πλευράς χρόνου) να απαλείψουμε
+# πρώτα τα κενά και μετά να κάνουμε τη διάσπαση, παρά να κάνουμε
+# πρώτα τη διάσπαση και μετά να απαλείψουμε τα κενά. Για το λόγο αυτό
+# και για να μην χάσουμε το αρχικό record, κάνουμε πρώτα ένα αντίγραφο
+# (local variable `keep') και μετά διασπούμε το αντίγραφο.
+#
+
+function cht_split(s, a, sep,		keep, n, i) {
+	delete a
+	if (sep == "")
+		sep = cht_separator
+
+	keep = s
+	gsub("[ \t]*\\" sep "[ \t]*", sep, keep)
+	if ((n = split(keep, a, sep)) <= 0)
+		a[n = 1] = ""
+	else {
+		sub("^[ \t]+", "", a[1])
+		sub("[ \t]+$", "", a[n])
+	}
+
+	return(n)
+}
+
+#
+# Η function `cht_getline' διαβάζει μια γραμμή από το αρχείο που της
+# περνάμε ως πρώτη παράμετρο και τοποθετεί τα πεδία της γραμμής αυτής
+# στο array που της περνάμε ως δεύτερη παράμετρο. Το array είναι
+# δεικτοδοτημένο αριθμητικά και στη θέση 0 έχει αυτούσια τη γραμμή.
+# Ο διαχωρισμός των πεδίων γίνεται με pipe separator, αλλά αν θέλουμε
+# μπορούμε να δώσουμε ως τρίτη παράμετρο κάποιον άλλο διαχωριστή. Αν
+# η function αντιμετωπίσει πρόβλημα με το διάβασμα από το file τυπώνει
+# μήνυμα λάθους και διακόπτει το πρόγραμμα. Αν φθάσει στο τέλος του
+# file κλείνει το file και επιστρέφει 0, αλλιώς επιστρέφει το πλήθος
+# των πεδίων της γραμμής. Τα πεδία που επιστρέφονται στο array είναι
+# μπρος-πίσω clipped.
+#
+
+function cht_getline(a, f, sep,		n, l) {
+	if (f == "") {
+		if ((n = (getline l)) < 0)
+			cht_fatal("cannot read standard input")
+	}
+	else if ((n = (getline l <f)) < 0)
+		cht_fatal(f ": cannot read file")
+
+	if (!n) {
+		close(f)
+		delete a
+		return(0)
+	}
+
+	n = cht_split(l, a, sep)
+	a[0] = l
+	return(n)
+}
+
+#
+# Η function `cht_Onoma' είναι εσωτερική και χρησιμοποιείται από την
+# `cht_onoma' που επιστρέφει ονόματα σε γενική και αιτιατική πτώση.
+#
+
+function cht_Onoma(onoma, tbl,		l1, i, l2, l3, ret) {
+	if ((l1 = length(onoma)) <= 0)
+		return(onoma)
+
+	for (i in tbl) {
+		if ((l2 = length(i)) <= l3)
+			continue
+
+		if (l2 > l1)
+			continue
+
+		 if (substr(onoma, l1 - l2 + 1) == i) {
+			ret = tbl[i]
+			l3 = l2
+		}
+	}
+
+	if (l3 <= 0)
+		return(onoma)
+
+	return(substr(onoma, 1, l1 - l3) ret)
+}
+
+#
+# Η function `cht_onoma' δέχεται ένα όνομα, το γένος και την πτώση,
+# και επιστρέφει το όνομα στη ζητούμενη πτώση για το ζητούμενο γένος.
+# Το γένος καθορίζεται με τα γράμματα [Α]ρσενικό, [α]ρσενικό, [Ά]νδρας,
+# [ά]νδρας, [Γ]υναίκα, [γ]υναίκα, [Θ]ήλυ, [θ]ήλυ και τα αντίστοιχα
+# λατινικά γράμματα, ενώ η πτώση καθορίζεται από τα γράμματα [Γ]ενική
+# και [γ]ενική για τη γενική πτώση και [Α]ιτιατική και [α]ιτιατική
+# για την αιτιατική πτώση.
+#
+
+function cht_onoma(onoma, filo, ptosi,		s) {
+	if ((s = cht_clipstr(onoma)) == "")
+		return(s)
+
+	if ((filo ~ /^[ΑαΆάAa]/) && (ptosi ~ /^[ΓγGg]/))
+		return(cht_Onoma(s, cht_onoma_AG))
+
+	if ((filo ~ /^[ΑαΆάAa]/) && (ptosi ~ /^[ΑαAa]/))
+		return(cht_Onoma(s, cht_onoma_AA))
+
+	if ((filo ~ /^[ΓγΘθGgTt]/) && (ptosi ~ /^[ΓγGg]/))
+		return(cht_Onoma(s, cht_onoma_TG))
+
+	if ((filo ~ /^[ΓγΘθGgTt]/) && (ptosi ~ /^[ΑαAa]/))
+		return(cht_Onoma(s, cht_onoma_TA))
+
+	return(s)
+}
+
+#
+# Η function `cht_arthro' δέχεται ως πρώτη παράμετρο το φύλο (γένος)
+# και επιστρέφει το αντίστοιχο άρθρο: "η" για γυναίκες, αλλιώς "ο".
+# Αν θέλω κεφαλαίο άρθρο δίνω μη μηδενική δεύτερη παράμετρο.
+# Γυναικεία γένη θεωρούνται αυτά που ξεκινούν με τα γράμματα "Γ", "γ",
+# "Θ" και "θ" (από τις λέξεις "γυναίκα" και "θήλυ"). Η function
+# μπορεί να χρησιμοποιηθεί κια για αιτιατική ή γενική πτώση με χρήση
+# τρίτης παραμέτρου ("Α" και "Γ" αντίστοιχα).
+#
+
+function cht_arthro(filo, kefaleo, ptosi) {
+	if (ptosi ~ /^[ΑαAa]/)
+		return (filo ~ /^[ΓγΘθ]/ ? (kefaleo ? "ΤΗΝ" : "την") :
+			(kefaleo ? "ΤΟΝ" : "τον"))
+
+	if (ptosi ~ /^[ΓγGg]/)
+		return (filo ~ /^[ΓγΘθ]/ ? (kefaleo ? "ΤΗΣ" : "της") :
+			(kefaleo ? "ΤΟΥ" : "του"))
+
+	return (filo ~ /^[ΓγΘθ]/ ? (kefaleo ? "Η" : "η") :
+		(kefaleo ? "Ο" : "ο"))
+}
+
+#
+# Η function `cht_srep' δέχεται ένα string και έναν αριθμό n και
+# επιστρέφει το string επανειλημμένο n φορές. Όσο και αν φαίνεται
+# αχρείαστη, μπορεί να χρησιμοποιηθεί για εκτύπωση διαχωριστικών
+# κλπ, π.χ.
+#
+#     print cht_srep('-', 20)
+#
+
+function cht_srep(s, n,		ret) {
+	while (n-- > 0)
+		ret = ret s
+
+	return(ret)
+}
+
+#
+# Η function `cht_tab' δέχεται ένα string, ένα πλάτος, έναν LCR
+# specifier και έναν fill χαρακτήρα, και τυπώνει το string στο πλάτος
+# που καθορίστηκε, αριστερά, δεξιά ή κέντρο (ανάλογα με το LCR) και
+# γεμίζοντας τα κενά (δεξιά/αριστερά) με τον fill χαρακτήρα.
+#
+
+function cht_tab(s, w, clr, fc,		ret, l, ll, lr) {
+	if (w <= 0)
+		return(ret)
+
+	if ((l = length(s)) > w)
+		l = w
+
+	if (clr ~ /^[CcΚκKk]/) {		# κέντρο
+		if ((ll = sprintf("%.0lf", (w - l) / 2.0)) < 0)
+			ll = 0
+
+		lr = w - l - ll
+	}
+	else if (clr ~ /^[LlΑαAa]/)		# αριστερά
+		lr = w - l
+	else					# δεξιά
+		ll = w - l
+
+	if (fc == "")
+		fc = " "
+
+	return(cht_srep(fc, ll) substr(s, 1, l) cht_srep(fc, lr))
+}
+
+#
+# Η function `cht_center' επιστρέφει το string που της περνάμε ως
+# πρώτη παράμετρο κεντραρισμένο στο πλάτος που της περνάμε ως
+# δεύτερη παράμετρο. Μπορούμε να περάσουμε και ως τρίτη παράμετρο
+# έναν χαρακτήρα (string) με τον οποίο θα γίνει filling δεξιά και
+# αριστερά.
+#
+
+function cht_center(s, w, fc) {
+	return(cht_tab(s, w, "C", fc))
+}
+
+#
+# Η function `cht_left' επιστρέφει το string που της περνάμε ως
+# πρώτη παράμετρο στοιχισμένο αριστερά στο πλάτος που της περνάμε ως
+# δεύτερη παράμετρο.  Μπορούμε να περάσουμε και ως τρίτη παράμετρο
+# έναν χαρακτήρα (string) με τον οποίο θα γίνει filling δεξιά.
+#
+
+function cht_left(s, w, fc) {
+	return(cht_tab(s, w, "L", fc))
+}
+
+#
+# Η function `cht_right' επιστρέφει το string που της περνάμε ως
+# πρώτη παράμετρο στοιχισμένο δεξιά στο πλάτος που της περνάμε ως
+# δεύτερη παράμετρο.  Μπορούμε να περάσουμε και ως τρίτη παράμετρο
+# έναν χαρακτήρα (string) με τον οποίο θα γίνει filling αριστερά.
+#
+
+function cht_right(s, w, fc) {
+	return(cht_tab(s, w, "R", fc))
+}
+
+#
+# Η function `cht_istogram' δέχεται ένα array, ένα printf format
+# string (για αριθμό, π.χ. "%6.2lf"), ένα πλάτος σελίδας και ένα
+# ένα μέγιστο τιμής και τυπώνει ένα ιστόγραμμα στο οποίο εμφανίζονται:
+# το index, η τιμή και μια σειρά από αστερίσκους ανάλογη με την
+# τιμή. Η function επιστρέφει το πλήθος των στοιχείων στο array.
+#
+
+function cht_istogram(a, fmt, w, max, fc,		n, b, i, l, \
+	maxi, buf, w1, w2, k) {
+	if ((n = asorti(a, b)) <= 0)
+		return(n)
+
+	for (i in a) {
+		if ((l = length(i)) > maxi)
+			maxi = l
+	}
+
+	if (max <= 0) {
+		for (i in a) {
+			if (a[i] > max)
+				max = a[i] + 0
+		}
+	}
+
+	if (fc == "")
+		fc = "*"
+	else
+		fc = substr(fc, 1, 1)
+
+	for (i = 1; i <= n; i++) {
+		buf = sprintf("%*s " fmt, maxi, b[i], a[b[i]])
+		if (w1 <= 0) {
+			w1 = length(buf)
+			w2 = w - w1 - 2.0
+		}
+
+		printf buf
+		if (w2 <= 0) {
+			print ""
+			continue
+		}
+
+		if ((k = sprintf("%.0lf", a[b[i]] * (w2 / max))) <= 0) {
+			print ""
+			continue
+		}
+
+		printf " "
+		while (k-- > 0)
+			printf fc
+
+		print ""
+	}
+
+	return(n)
+}
+
+#
+# Η function `cht_fistogram' κάνει ακριβώς την ίδια δουλειά με την
+# `cht_istogram' μόνο που αντί να της περάσουμε ένα array, της περνάμε
+# το όνομα ενός file από το οποίο θα διαβάσει τα δεδομένα. Ως δεύτερη
+# και τρίτη παράμετρο περνάμε τη στήλη των indices και τη στήλη των
+# τιμών αντίστοιχα, ενώ ως τέταρτη παράμετρο περνάμε το separator
+# string (default pipe). Οι υπόλοιπες παράμετροι είναι ίδιες με τις
+# παραμέτρους της `cht_istogram'. Η function επιστρέφει το πλήθος
+# των στοιχείων του ιστογράμματος (index count).
+#
+
+function cht_fistogram(f, coli, colv, sep, fmt, w, max, fc,\
+	rec, max_col, nf, fld, a) {
+	if (coli <= 0)
+		coli = 1
+
+	max_col = coli
+	if (colv > max_col)
+		max_col = colv
+
+	if (sep == "")
+		sep = FS
+
+	if (sep == "")
+		sep = cht_separator
+
+	while ((getline rec < f) > 0) {
+		if ((nf = split(rec, fld, sep)) < max_col) {
+			if (max_col > 1) {
+				cht_errmsg(f ": " rec \
+					": not enough columns")
+				continue
+			}
+		}
+
+		if (colv > 0)
+			a[fld[coli]] += fld[colv]
+		else
+			a[fld[coli]]++
+	}
+
+	return(cht_istogram(a, fmt, w, max, fc))
+}
+
+#
+# Η function `cht_numck' δέχεται ως παράμετρο ένα string και ελέγχει
+# αν το string είναι ακέραιος αριθμός. Αν θέλουμε μπορούμε να δώσουμε
+# και δεύτερη παράμετρο η οποία, όταν δεν είναι κενή, θεωρείται κάτω
+# όριο (inclusive). Αν δοθεί και τρίτη παράμετρος (μη κενή) θεωρείται
+# άνω (inclusive) όριο. Η function επιστρέφει μηδέν αν έχουμε αριθμό
+# εντός ορίων, αλλιώς επιστρέφει 1 όταν δεν έχουμε σωστό αριθμό, 2 όταν
+# ο αριθμός είναι μικρότερος από το κάτω όριο και 3 όταν ο αριθμός
+# υπερβαίνει το άνω όριο.
+#
+
+function cht_numck(x, min, max) {
+	if (x !~ /^[ 	]*\-?[0-9]+[ 	]*$/)
+		return(1)
+
+	x += 0
+	if ((min != "") && (x < min))
+		return(2)
+
+	if ((max != "") && (x > max))
+		return(3)
+
+	return(0)
+}
+
+#
+# Η function `cht_fltck' δέχεται ως παράμετρο ένα string και ελέγχει
+# αν το string είναι (δεκαδικός) αριθμός. Αν θέλουμε μπορούμε να δώσουμε
+# και δεύτερη παράμετρο η οποία, όταν δεν είναι κενή, θεωρείται κάτω
+# όριο (inclusive). Αν δοθεί και τρίτη παράμετρος (μη κενή) θεωρείται
+# άνω (inclusive) όριο. Η function επιστρέφει μηδέν αν έχουμε αριθμό
+# εντός ορίων, αλλιώς επιστρέφει 1 όταν δεν έχουμε σωστό αριθμό, 2 όταν
+# ο αριθμός είναι μικρότερος από το κάτω όριο και 3 όταν ο αριθμός
+# υπερβαίνει το άνω όριο.
+#
+
+function cht_fltck(x, min, max,		n, a) {
+	if ((n = split(x, a, ".")) == 1)
+		return(cht_numck(x, min, max))
+
+	if (n != 2)
+		return(1)
+
+	if (a[1] !~ /^[ 	]*\-?[0-9]*$/)
+		return(1)
+
+	if (a[2] !~ /^[0-9]+$/)
+		return(1)
+
+	x += 0.0
+	if ((min != "") && (x < min))
+		return(2)
+
+	if ((max != "") && (x > max))
+		return(3)
+
+	return(0)
+}
+
+#
+# Η function `cht_tpm_string' είναι πολύ χρήσιμη σε εκτυπώσεις
+# strings που απευθύνονται στον `tpm'. Μέσα στα string data μπορεί
+# να παρεισφρύσουν ειδικές tpm απκολουθίες, π.χ. \D, \10 κλπ.
+# Ακόμη, μπορεί κάποιο string να τυπώνεται στην αρχή γραμμής και
+# να ξεκινάει με `.' (τελεία). Τέτοια data θα δημιουργήσουν πρόβλημα
+# στον tpm και πρέπει να αποφεύγονται. Επειδή όμως δεν μπορούμε να
+# ελέγξουμε τα data που καταχωρούνται στην database, παρέχεται η
+# παρούσα function στην οποία περνάμε ένα string και μας το επιστρέφει
+# απαλλαγμένο από τέτοια φαινόμενα.
+#
+
+function cht_tpm_string(s, dot) {
+	if (dot)
+		return (s ~ /^\./ ? "\\" s : s)
+
+	gsub("\\\\", "\\\\", s)
+	sub("^\\.", "\\.", s)
+	return(s)
+}
+
+#
+# Η function `cht_bold' επιστρέφει το tpm bold sequence όταν της
+# περνάμε μη μηδενική παράμετρο. Αν δεν της περάσουμε καμία παράμετρο
+# ή η παράμετρος που της περάσουμε είναι μηδέν, τότε επιστρέφει το
+# bold-off tpm sequence. Τα παραπάνω συμβαίνουν όταν η global flag
+# `cht_tpm' έχει μη μηδενική τιμή. Όταν η `cht_tpm' είναι μηδέν,
+# η function επιστρέφει το null string.
+#
+
+function cht_bold(on,	ret) {
+	if (!cht_tpm)
+		return(ret)
+
+	return(on ? "\\B" : "\\b")
+}
+
+#
+# Η function `cht_underline' επιστρέφει το tpm underline sequence όταν
+# της περνάμε μη μηδενική παράμετρο. Αν δεν της περάσουμε καμία
+# παράμετρο ή η παράμετρος που της περάσουμε είναι μηδέν, τότε
+# επιστρέφει το underline-off tpm sequence. Τα παραπάνω συμβαίνουν
+# όταν η global flag `cht_tpm' έχει μη μηδενική τιμή. Όταν η `cht_tpm'
+# είναι μηδέν, η function επιστρέφει το null string.
+#
+
+function cht_underline(on,	ret) {
+	if (!cht_tpm)
+		return(ret)
+
+	return(on ? "\\U" : "\\u")
+}
+
+#
+# Η function `cht_italics' επιστρέφει το tpm italics sequence όταν
+# της περνάμε μη μηδενική παράμετρο. Αν δεν της περάσουμε καμία
+# παράμετρο ή η παράμετρος που της περάσουμε είναι μηδέν, τότε
+# επιστρέφει το italics-off tpm sequence. Τα παραπάνω συμβαίνουν
+# όταν η global flag `cht_tpm' έχει μη μηδενική τιμή. Όταν η `cht_tpm'
+# είναι μηδέν, η function επιστρέφει το null string.
+#
+
+function cht_italics(on,	ret) {
+	if (!cht_tpm)
+		return(ret)
+
+	return(on ? "\\I" : "\\i")
+}
+
+#
+# Η function `cht_normal' επιστρέφει το normal font tpm sequence
+# εφόσον η global flag `cht_tpm' έχει μη μηδενική τιμή. Αν η `cht_tpm'
+# είναι μηδέν, η function επιστρέφει το null string.
+#
+
+function cht_normal(	ret) {
+	if (!cht_tpm)
+		return(ret)
+
+	return(cht_bold() cht_underline() cht_italics())
+}
+
+#
+# Η function `cht_cpi' επιστρέφει cpi set tpm sequence εφόσον η global
+# flag `cht_tpm' έχει μη μηδενική τιμή. Αν η `cht_tpm' είναι μηδέν, η
+# function επιστρέφει το null string.
+#
+
+function cht_cpi(cpi,		ret) {
+	if (!cht_tpm)
+		return(ret)
+
+	if (cpi <= 0)
+		return(ret)
+
+	return(sprintf("\\W%02d", cpi % 100))
+}
+
+#
+# Επειδή πολλές φορές παρουσιάζεται η ανάγκη εκτύππωσης πολλών
+# προδιαγραφών στηλών του τρέχοντος πίνακα (μόνο το `TB', χωρίς
+# specifications), παρέχεται η function `cht_tpm_tb' που τυπώνει
+# όσα `TB' θέλουμε· αν δεν δοθεί πλήθος ή το πλήθος είναι μικρότερο
+# ή ίσο του μηδενός, τυπώνεται μια προδιαγραφή.
+#
+
+function cht_tpm_tb(n) {
+	do {
+		print ".TB"
+	} while (--n > 0)
+}
+
+#
+# Η fucntion `cht_tpm_sk' δέχεται ως παράμετρο έναν αριθμό και
+# τυπώνει τα ανάλογα skips για τον tpm. Αν δεν δοθεί παράμετρος
+# ή είναι μηδέν κάνω skip 1.
+#
+
+function cht_tpm_sk(n) {
+	print ".SK " (n > 0 ? n : 1)
+}
+
+#
+# Η function `cht_tpm_bp' αλλάζει σελίδα. Αν βάλω μη μηδενική
+# παράμετρο, τότε αυτή θεωρείται αριθμός της νέας σελίδας.
+# Αν δοθεί δεύτερη παράμετρος, τότε αυτή θεωρείται skip και
+# μετά την αλλαγή σελίδας έχω ανάλογες κενές γραμμές.
+#
+
+function cht_tpm_bp(n, sk) {
+	printf ".BP"
+	if (n > 0)
+		printf " " n + 0
+
+	print ""
+	if (sk)
+		print ".SK " sk + 0
+}
+
+#
+# Η fucntion `cht_tpm_ll' θέτει τις προδιαγραφές σελίδας.
+# Δέχεται ως παραμέτρους το πλάτος (LL), το offset (PO),
+# το cpi (CI) και το μήκος σελίδας (PL). Αν κάποιες από
+# τις παραμέτρους δεν δοθούν ή είναι μηδενικές δίνονται
+# default (λογικές) τιμές ή αγνοούνται τελείως. Η function
+# επιστρέφει το πλάτος σελίδας, το οποίο πολλές φορές χρησιμοποιούμε
+# μέσα από τα scripts, και επομένως μπορεί να χρησιμοποιηθεί, π.χ.,
+# ως εξής:
+#
+#     ll = cht_tpm_ll(94, 4, 12)
+#
+
+function cht_tpm_ll(ll, po, cpi, pl) {
+	if (ll <= 0)
+		ll = 74
+
+	print ".LL " ll + 0
+	if (!po)
+		po = 2
+	else if (po < 0)
+		po = 0
+
+	print ".PO " po + 0
+	if (cpi > 0)
+		print ".CI " cpi + 0
+
+	if (pl > 0)
+		print ".PL " pl + 0
+
+	return(ll)
+}
+
+function cht_tpm_header(titlos, anikto, sk, change,	i, max) {
+	print (change ? ".CH" : ".PH")
+	print ".SK " (sk > 0 ? sk : 2)
+	if (0 in titlos)
+		max = titlos[0] + 0
+	else {
+		for (i in titlos)
+			max++
+	}
+
+	if (max > 0) {
+		print ".CE " max
+		for (i = 1; i <= max; i++)
+			print titlos[i]
+		print ".CE 0"
+	}
+
+	if (!anikto) {
+		print ".SK"
+		print ".HE"
+	}
+}
+
+function cht_tpm_footer(sk) {
+	print ".PF"
+	print ".SK"
+	print ".TL @\\D, \\T@@Σελίδα \\P@"
+	print ".SK " (sk > 0 ? sk : 2)
+	print ".FE"
+}
+
+function cht_tpm_tabset(ts) {
+	if (ts)
+		OFS = ts
+
+	print ".TC " substr(OFS, 1, 1)
+}
+
+#
+# Η function `cht_tpm_setup' καλείται στην αρχή του output data stream
+# που απευθύνεται προς τον tpm. Δέχεται τις ίδιες παραμέτρους με την
+# `cht_tpm_ll' και επιστρέφει επίσης το πλάτος της σελίδας. Πέρα από
+# τις βασικές προδιαγραφές της σελίδας, η function θέτει default header
+# και footer. Ακόμη, θέτει τον tpm tab separator σε <TAB> και θέτει τον
+# awk output field separator (OFS) σε <TAB><SPACE>.
+#
+
+function cht_tpm_setup(ll, po, cpi, pl,			titlos) {
+	ll = cht_tpm_ll(ll, po, cpi, pl)
+	cht_tpm_tabset()
+	cht_tpm_header(titlos, 0, 1)
+	cht_tpm_footer()
+	return(ll)
+}
+
+#
+# Η function `cht_tpm_data' θέτει τον tpm (που ακολουθεί ως post
+# processor) σε data mode, δηλαδή οι γραμμές που ξεκινούν με τελεία
+# (`.') δεν αναγνωρίζονται ως εντολές, αλλά ως απλό κείμενο. Αν δεν
+# περάσουμε παράμετρο ή περάσουμε μηδενική παράμετρο, τότε ο tpm
+# επανέρχεται σε command mode. Η function καλείται συνήθως πριν την
+# εκτύπωση δεδομένων στα οποία μπορεί να εμφανίζονται γραμμές που
+# ξεκινούν με τελεία (`.'), π.χ. σχόλια κλπ. Μετά το τέλος της
+# εκτύπωσης των ύποπτων δεδομένων, καλούμε τη function χωρίς παράμετρο
+# για να επαναφέρουμε τον tpm σε command mode.
+#
+
+function cht_tpm_data(yes) {
+	printf (yes ? ".DM\n" : "\034")
+}
+
+#
+# Η function `cht_monitor' τυπώνει μηνύματα στο `cht_monitor_file'.
+# Πρόκειται για το standrd error ή το standard output εφόσον κάποιο
+# από αυτά είναι τερματικό ή αλλιώς για όποιο file περιέχεται στη
+# μεταβλητή `cht_monitor_file'.
+#
+
+function cht_monitor(msg) {
+	if (cht_monitor_file == "")
+		return(0)
+
+	if (msg == "") {
+		if (cht_monitor_dirty)
+			msg = "\r" cht_srep(" ", 79) "\r"
+		else
+			msg = "\n"
+	}
+
+	if (cht_monitor_dirty < 0) {
+		printf "\r%79s\r", "" >"/dev/tty"
+		cht_monitor_dirty = 1
+	}
+
+
+	if (cht_monitor_dirty)
+		gsub("\n", "\r", msg)
+
+	printf msg >cht_monitor_file
+	fflush(cht_monitor_file)
+	return(0)
+}
+
+#
+# Η function `cht_quote' επιστρέφει ένα απλό (μονό) quote\ (').
+# Η function είναι βολική σε κώδικα που γράφεται on-the-fly σε shell
+# scripts. Εκεί είναι αρκετά προβληματική η γραφή των quotes καθώς
+# το awk script γράφεται με την option -s ακολουθούμενο από το
+# script μέσα σε απλά quotes. Έτσι, θα πρέπει να "σπάμε" το script,
+# να παρεμβάλλουμε ένα backslash, μετά να δίνουμε το quote και τέλος
+# άλλο ένα quote για να συνεχίσουμε το script.
+#
+
+function cht_quote() {
+	return("'")
+}
+
+function cht_abs(x) {
+	return(x >= 0 ? x : (-x))
+}
+
+function cht_zero(x, d) {
+	if ((d += 0) <= 0)
+		d = cht_tiny
+
+	return (((x += 0) > (-d)) && (x < d))
+}
+
+#
+# Η function `cht_minas' δέχεται έναν μήνα ως αριθμό και επιστρέφει
+# τον μήνα περιγραφικά. Αν δοθεί και δεύτερη (μη μηδενική) παράμετρος,
+# επιστρέφεται ο μήνας σε μικρά ελληνικά στοιχεία, αλλιώς (default)
+# επιστρέφεται ο μήνας σε κεφαλαία.
+#
+
+function cht_minas(m, low,		s) {
+	if (!((m += 0) in cht_minas_table))
+		return(s)
+
+	s = cht_minas_table[m]
+	return(low ? s : cht_toupper(s))
+}
+
+#
+# Η function `cht_dow' δέχεται μια ημερομηνία και επιστρέφει έναν
+# αριθμό από 1 έως 7 που δείχνει την ημέρα της εβδομάδος (1 = Κυριακή).
+# Αν δεν δοθεί ημερομηνία, τότε υποτίθεται η τρέχουσα. Αν η ημερομηνία
+# είναι λανθασμένη, επιστρέφεται μηδενική τιμή.
+#
+
+function cht_dow(date) {
+	if (!date)
+		date = cht_curdate()
+	else if (cht_dttodmy(date))
+		return(0)
+
+	return(((cht_date2ld(date) - 3) % 7) + 1)
+}
+
+#
+# Η function `cht_mera' δέχεται μια ημερομηνία και επιστρέφει την
+# αντίστοιχη ημέρα της εβδομάδος (ως string). Αν δεν δοθεί ημερομηνία,
+# ή δοθεί κενή ημερομηνία, τότε υποτίθεται η τρέχουσα ημερομηνία.
+# Αν δοθεί και δεύτερη (μη μηδενική) παράμετρος, τότε η ημέρα της
+# εβδομάδος επιστρέφεται σε μικρά αντί των default κεφαλαίων.
+#
+
+function cht_mera(date, low,		dow, s) {
+	if (!((dow = cht_dow(date)) in cht_dow_table))
+		return(s)
+
+	s = cht_dow_table[cht_dow(date)]
+	return(low ? s : cht_toupper(s))
+}
+
+#
+# Η function `cht_imerominia' δέχεται ως παράμετρο μια ημερομηνία,
+# και επιστρέφει την ημερομηνία περιγραφικά π.χ. για τις 21/03/2007
+# επιστρέφει "ΤΕΤΑΡΤΗ, 21 ΜΑΡΤΙΟΥ 2007". Αν δεν επιθυμούμε την
+# ημέρα, δίνουμε και δεύτερη (μη μηδενική) παράμετρο. Τέλος, αν δοθεί
+# και τρίτη (μη μηδενική) παράμετρος, η ημερομηνία επιστρέφεται σε
+# μικρά ελληνικά στοιχεία αντί των default κεφαλαίων ελληνικών.
+# Εαν η global flag `cht_tpm' έχει μη μηδενική τιμή, το κενό
+# μεταξύ της ημέρας και του μήνα γίνεται αδιάσπαστο.
+#
+
+function cht_imerominia(date, mera, low,		dmy, s) {
+	if (cht_dttodmy(date, dmy))
+		return(s)
+
+	if (!mera)
+		s = cht_mera(date, low) ", "
+
+	return (s dmy[1] (cht_tpm ? "\\S" : " ") \
+		cht_onoma(cht_minas(dmy[2], low), "Α", "Γ") " " dmy[3])
+}
+
+#
+# Η fnction `cht_tolower' δέχεται ένα string που αποτελείται από
+# κεφαλαία τονούμενα, και το επιστρέφει σε μικρά (εκτός από το πρώτο
+# γράμμα). Αν τυχόν δεν υπάρχει τόνος και υπάρχει γράμμα με διαλυτικά,
+# τότε αυτό το γράμμα μετατρέπεται σε τονούμενο με διαλυτικά.
+# Υπάρχει διαφορετική μεταχείριση για κάποιους ειδικούς χαρακτήρες
+# που είναι οι παρενθέσεις, η τελεία, το κόμμα, η παύλα και το κενό.
+# Αν υπάρχει ειδικός χαρακτήρας μέσα στο αρχικό string, τότε τα "Σ" 
+# πριν από τον ειδικό χαρακτήρα μετατρέπονται σε "ς". 
+# Επίσης, το πρώτο γράμμα μετά από κάθε ειδικό χαρακτήρα
+# δεν μετατρέπεται σε μικρό (παραμένει ως έχει)· αν δεν το θέλουμε
+# αυτό, τότε δίνουμε δεύτερη (μη μηδενική) παράμετρο.
+#
+
+function cht_tolower(s, ola,			l, t, i, c, prev) {
+	if ((l = length(s)) < 2)
+		return(s)
+
+	t = substr(s, 1, 1)
+	for (i = 2; i < l; i++) {
+		if ((!((c = substr(s, i, 1)) in cht_tolower_map)) ||
+			((prev ~ /[(), .-]/) && (!ola))) {
+			t = t (prev = c)
+			continue
+		}
+
+		if ((c != "Σ") || \
+			((prev = substr(s, i + 1, 1)) !~ /[(), .-]/)) {
+			t = t cht_tolower_map[prev = c]
+			continue
+		}
+
+		t = t "ς" prev
+		i++
+	}
+
+	if ((c = substr(s, l, 1)) == "Σ")
+		t = t "ς"
+	else if (c in cht_tolower_map)
+		t = t cht_tolower_map[c]
+	else
+		t = t c
+
+	for (i = 1; i <= l; i++) {
+		if (substr(t, i, 1) ~ /[ΆάΈέΉήΊίΌόΎύΏώ]/)
+			return(t)
+	}
+
+	s = ""
+	for (i = 1; i <= l; i++) {
+		if ((c = substr(t, i, 1)) == "ϊ")
+			return(s "ΐ" substr(t, i + 1))
+
+		if (c == "ϋ")
+			return(s "ΰ" substr(t, i + 1))
+
+		s = s c
+	}
+
+	return(s)
+}
+
+#
+# Η function `cht_toupper' δέχεται ένα string και το επιστρέφει
+# μετατρέποντας τα μικρά ελληνικά στοιχεία σε κεφαλαία· όλοι οι
+# υπόλοιποι χαρακτήρες επιστρέφονται αναλλοίωτοι. Τα τονούμενα
+# γράμματα δεν τονίζονται, ενώ τα γράμματα που φέρουν διαλυτικά
+# τα διατηρούν.
+#
+
+function cht_toupper(s,		i, l, c, t) {
+	l = length(s)
+	for (i = 1; i <= l; i++) {
+		if ((c = substr(s, i, 1)) in cht_toupper_map)
+			t = t cht_toupper_map[c]
+		else
+			t = t c
+	}
+
+	return(t)
+}
+
+#
+# Η function `cht_notonos' δέχεται ένα string και το επιστρέφει
+# μετατρέποντας τα τονούμενα (μικρά και κεφαλαία) σε μη τονούμενα.
+#
+
+function cht_notonos(s,		i, l, c, t) {
+	l = length(s)
+	for (i = 1; i <= l; i++) {
+		if ((c = substr(s, i, 1)) in cht_notonos_map)
+			t = t cht_notonos_map[c]
+		else
+			t = t c
+	}
+
+	return(t)
+}
+
+# Η function `cht_afmck' ελέγχει την ορθότητα ενός Α.Φ.Μ. σύμφωνα
+# με αλγόριθμο που βρέθηκε στο web από τη Δώρα Καργάκη. Η function
+# επιστρέφει μη μηδενική τιμή αν το Α.Φ.Μ. που της περνάμε ως μια
+# μοναδική παράμετρο είναι λανθασμένο, αλλιώς επιστρέφει μηδέν.
+# Αν περάσουμε και δεύτερη (μη μηδενική) παράμετρο, τότε το κενό
+# ή το μηδενικό Α.Φ.Μ. θεωρείται επίσης σωστό.
+#
+# Ο αλγόριθμος
+# ------------
+# Αν ο Α.Φ.Μ. είναι A1A2A3A4A5A6A7A8A9, όπου Ai είναι το i ψηφίο
+# του αριθμού, τότε υπολογίζω το άθροισμα:
+#
+#	tot = (256 * A1) + (128 * A2) + (64 * A3) + (32 * A4) +
+#		(16 * A5) + (8 * A6) + (4 * A7) + (2 * A8)
+#
+# Υπολογίζω το υπόλοιπο Y της διαίρεσης του tot με το 11.
+# Αν το Y είναι 10 τότε A9 = 0, αλλιώς A9 = Y.
+
+function cht_afmck(afm, zero,			tot, i, base, c, p) {
+	if (zero && (afm ~ /^[ \t]*0*[ \t]*$/))
+		return(0)
+
+	if (cht_numck(afm, 1, 999999999))
+		return(1)
+
+	afm = sprintf("%09d", afm)
+	tot = 0
+	i = 1
+	for (base = 256; base > 1; base /= 2) {
+		if (!(c = substr(afm, i, 1)))
+			return(1)
+
+		tot += base * c
+		i++
+	}
+
+	if ((p = tot % 11) == 10)
+		p = 0;
+
+	return(substr(afm, i, 1) != p)
+}
+
+#
+# Η function `cht_parray' τυπώνει το array που της περνάμε ως πρώτη
+# παράμετρο. Το array πρέπει να είναι δεικτοδοτημένο αριθμητικά
+# (1-based). Αν θέλουμε, μπορούμε να περάσουμε και δεύτερη παράμετρο
+# που δείχνει μέχρι ποιά γραμμή επιθυμούμε να εκτυπώσουμε. Αν δεν
+# δοθεί δεύτερη παράμετρος, τότε εκτυπώνεται όλο το array. Πάντως,
+# σε καμμία περίπτωση, δεν εκτυπώνουμε εκτός ορίων array. Η function
+# επιστρέφει το πλήθος των γραμμών που τύπωσε. Μπορούμε, με τρίτη
+# μη μηδενική παράμετρο, να καθορίσουμε το στοιχείο από το οποίο
+# θα αρχίσει η εκτύπωση τού array· συνήθως χρησιμοποιούμε τρίτη
+# παράμετρο σε 0-based arrays όπου περνάμε ως παράμετρο το 0.
+#
+
+function cht_parray(a, max, base,			i, cnt) {
+	if (base == "")
+		base = 1
+
+	if (!max)
+		max = 999999999
+
+	for (i = base; i <= max; i++) {
+		if (!(i in a))
+			break
+
+		print a[i]
+		cnt++
+	}
+
+	return(cnt)
+}
+
+function cht_larray(a,			i, cnt) {
+	cnt = 0
+	for (i in a) {
+		print i, a[i]
+		cnt++
+	}
+
+	return(cnt)
+}
+
+#
+# Η function `cht_text_read' διαβάζει κείμενο από το file του
+# οποίου το όνομα δίνεται ως πρώτη παράμετρος. Το κείμενο
+# αποθηκεύεται στο global array `cht_text_data' με indices που
+# αποτελούνται από κωδικούς και αύξοντα αριθμό. Στο global array
+# `cht_text_aa_data' ενημερώνονται παράλληλα οι αύξοντες αριθμοί ανά
+# κωδικό. Ως κωδικός λογίζεται γραμμή που εκκινεί με τον
+# χαρακτήρα `\034' (Control-\). Η function επιστρέφει μηδέν
+# εφόσον διαβάσει επιτυχώς το αρχείο κειμένου, αλλιώς επιστρέφει
+# μη μηδενική τιμή και στο `ERRNO' υπάρχει το σχετικό μήμυμα λάθους.
+# Αν θέλουμε μπορούμε να δώσουμε και δεύτερη παράμετρο που θα
+# χρησιμοποιηθεί ως tag στο κείμενο που διαβάζουμε.
+#
+
+function cht_text_read(file, tag,		stat, x, code) {
+	while ((stat = (getline x <file)) > 0) {
+		if (x ~ /^\034/) {
+			code = tag "@" substr(x, 2)
+			continue
+		}
+
+		cht_text_aa_data[code]++
+		cht_text_data[code "\034" cht_text_aa_data[code]] = x
+	}
+
+	close(file)
+	return(stat < 0)
+}
+
+#
+# Η function `cht_text_aa' δέχεται ως παράμετρο έναν κωδικό κειμένου
+# και επιστρέφει το πλήθος γραμμών που αφορούν σ'αυτόν τον κωδικό.
+# Εφόσον το ανίστοιχο κείμενο διαβάστηκε με tag θα πρέπει να περάσουμε
+# αυτό το tag ως δεύτερη παράμετρο.
+#
+
+function cht_text_aa(code, tag) {
+	return((code = tag "@" code) in cht_text_aa_data ? \
+		cht_text_aa_data[code] : 0)
+}
+
+#
+# Η function `cht_text' δέχεται ως παράμετρο έναν κωδικό κειμένου
+# και εκτυπώνει το αντίστοιχο κείμενο. Η function επιστρέφει το
+# πλήθος των γραμμών που τυπώνει. Αν θέλουμε μπορούμε να περάσουμε
+# και tag ως δεύτερη παράμετρο εφόσον έχουμε διαβάσει το κείμενο
+# με αυτό το tag.
+#
+
+function cht_text(code, tag,				i) {
+	if (!((code = tag "@" code) in cht_text_aa_data)) {
+		sub("^@", "", code)
+		return(!cht_errmsg(code ": no text found"))
+	}
+
+	for (i = 1; i <= cht_text_aa_data[code]; i++)
+		print cht_text_data[code "\034" i]
+
+	return(i)
+}
+
+#
+# Η function `cht_text_clear' δέχεται ως παράμετρο έναν κωδικό
+# κειμένου, και διαγράφει το εν λόγω κείμενο από το array κειμένου.
+# Αν δεν δοθεί καμμία παράμετρος (ή δοθεί κενή παράμετρος), τότε
+# διαγράφεται ολόκληρο το array κειμένου (`cht_text_data') όπως
+# επίσης και το array array δεικτών κειμένου (`cht_text_aa_data').
+# Η function επιστρέφει το πλήθος των γραμμών κειμένου που φαίνεται
+# να διεγράφησαν. Αν δοθεί μόνο το tag, τότε διαγράφονται όλα τα
+# σχετικά text items και επιστρέφεται το πλήθος των γραμμών που
+# διεγράφησαν.
+#
+
+function cht_text_clear(tag, code,			i, cnt) {
+	if ((code == "") && (tag == "")) {
+		delete cht_text_data
+		for (i in cht_text_aa_data)
+			cnt += cht_text_aa_data[i]
+
+		delete cht_text_aa_data
+		return(cnt + 0)
+	}
+
+	if (code != "") {
+		if (!((code = tag "@" code) in cht_text_aa_data))
+			return(0)
+
+		for (i = (cnt = cht_text_aa_data[code]); i > 0; i--)
+			delete cht_text_data[code "\034" i]
+
+		delete cht_text_aa_data[code]
+		return(cnt + 0)
+	}
+
+	tag = "^" tag "@"
+	for (code in cht_text_aa_data) {
+		if (code ~ tag) {
+			for (cnt += (i = cht_text_aa_data[code]); \
+				i > 0; i--)
+				delete cht_text_data[code "\034" i]
+
+			delete cht_text_aa_data[code]
+		}
+	}
+
+	return(cnt + 0)
+}
+
+function cht_amount(x, dec) {
+	return(cht_round(x, dec))
+}
+
+function cht_egrafo_header(ipkey, arm, tel, pro, ll, \
+	po, cpi, date,			data, die, tmi, telfax, \
+	idipro) {
+	if (cpi) print ".CI " cpi + 0
+	if (!ll) ll = 70
+	print ".LL " ll + 0
+	print ".PO " (po ? po + 0 : 4)
+	print ".PH"
+	print ".SK 2"
+	print ".HE"
+	print ".PF"
+	print ".SK 2"
+	print ".FE"
+	cht_tpm_tabset()
+	print ".TL @\\UΕΛΛΗΝΙΚΗ ΔΗΜΟΚΡΑΤΙΑ\\N@@Θεσσαλονίκη " \
+		(date ? date : "\\B\\D\\N") "@"
+	print ".TL @ΝΟΜΟΣ ΘΕΣΣΑΛΟΝΙΚΗΣ@@@"
+	printf ".TL @\\B\\UΔΗΜΟΣ ΘΕΣΣΑΛΟΝΙΚΗΣ\\N@@"
+	if (pro !~ /[γΓgG]/) printf "Αρ.Γεν.Πρ. \\U\\10\\S\\N"
+	print "@"
+	cht_sql_cmd("SELECT ipdesc, iptel FROM generic_ipiresia " \
+		"WHERE ipkey = '" (die = substr(ipkey = \
+		cht_clipstr(ipkey), 1, 3)) "';")
+	cht_sql_exec()
+	cht_sql_scan(data)
+	sub(/^Δ\/ΝΣΗ/, "ΔΙΕΥΘΥΝΣΗ", data[1])
+	print ".TL @" data[1] "@@@"
+	if (pro !~ /[εΕeE]/) idipro = "Αρ.Ειδ.Πρ. \\U\\10\\S\\N"
+	if ((tmi = substr(ipkey, 1, 5)) != die) {
+		cht_sql_cmd("SELECT ipdesc, iptel FROM " \
+			"generic_ipiresia WHERE ipkey = '" tmi "';")
+		cht_sql_exec()
+		cht_sql_scan(data)
+		sub(/^ΤΜ\./, "ΤΜΗΜΑ", data[1])
+		print ".TL @" data[1] "@@" idipro "@"
+		idipro = ""
+	}
+
+	if (arm) {
+		print ".TL @Αρμ: \\I" arm "\\N@@" idipro "@"
+		idipro = ""
+	}
+
+	if (!tel) tel = data[2]
+	if (tel) {
+		split(tel, telfax, ":")
+		if (telfax[1]) {
+			print ".TL @Τηλ: \\I" telfax[1] "\\N@@" \
+				idipro "@"
+			idipro = ""
+		}
+
+		if (telfax[2]) {
+			print ".TL @FAX: \\I" telfax[2] "\\N@@" \
+				idipro "@"
+			idipro = ""
+		}
+	}
+
+	if (idipro)
+		print ".TL @@@" idipro "@"
+
+	return(ll)
+}
+
+function cht_egrafo_ptss(ptss, text, nf) {
+	print ".SK"
+	print ".TB ::9: :"
+	print ".TL @@@\\I\\U" ptss "\\N@"
+	print ".TB ::0::"
+	if (!nf) {
+		print ".FI"
+		print ".AD"
+	}
+	print text
+	if (!nf) {
+		print ".RF"
+		print ".RA"
+	}
+	print ".TE"
+}
+
+#
+# Η function `cht_date2minas' δέχεται μια ημερομηνία και επιστρέφει
+# τον μήνα ως ΕΕΕΕΜΜ, όπου ΕΕΕΕ είναι το έτος και ΜΜ είναι ο μήνας,
+# π.χ. για ττην 23/03/1962 επιστρέφει 196203. Αν η ημερομηνία δεν
+# είναι ορθή, τότε επιστρέφει μηδέν.
+#
+
+function cht_date2minas(date,			dmy) {
+	if (cht_dttodmy(date, dmy))
+		return(0)
+
+	return((dmy[3] * 100) + dmy[2])
+}
+
+#
+# Η function `cht_mines' δέχεται δύο μήνες με τη μορφή ΕΕΕΕΜΜ, όπου
+# ΕΕΕΕ είναι το έτος και ΜΜ ο μήνας, και επιστρέφει τη διαφορά των
+# μηνών, π.χ. για τους μήνες 200703 και 200805 επιστρέφει 14, ενώ
+# για τους μήνες 200711 και 200802 επιστρέφει 3.
+#
+
+function cht_mines(dm1, dm2,		m1, y1, m2, y2) {
+	if (dm1 !~ /^[ \t]*[0-9][0-9]*[ \t]*$/)
+		dm1 = cht_date2minas(dm1)
+
+	if (dm2 !~ /^[ \t]*[0-9][0-9]*[ \t]*$/)
+		dm2 = cht_date2minas(dm2)
+
+	if ((dm1 <= 0) || (dm2 <= 0))
+		return(0)
+
+	m1 = dm1 % 100
+	y1 = (dm1 - m1) / 100
+
+	m2 = dm2 % 100
+	y2 = (dm2 - m2) / 100
+
+	if (y2 > y1)
+		return((((y2 - 1) - y1) * 12) + (m2 + 12) - m1)
+
+	if (y2 < y1)
+		return(-((((y1 - 1) - y2) * 12) + (m1 + 12) - m2))
+
+	return(m2 - m1)
+}
+
+#
+# Η function `cht_yesno' δέχεται ως πρώτη παράμετρο ένα string
+# το οποίο εκτυπώνεται στο τερματικό ως προτροπή ερώτησης.
+# Η function διαβάζει (πάντα από το τερματικό) ένα string
+# ως απάντηση· αν το string αποτελείται μόνο από "λευκούς"
+# χαρακτήρες, τότε λαμβάνεται ως απάντηση η δεύτερη παράμετρος
+# (εφόσον έχει δοθεί δεύτερη παράμετρος). Κατόπιν ελέγχεται
+# η απάντηση (είτε δόθηκε, είτε τέθηκε από το default) και
+# εφόσον μοιάζει με "Yes" ή με "Ναι", επιστρέφεται μη μηδενική
+# τιμή, αλλιώς εφόσον μοιάζει με "No" ή με "Όχι" επιστρέφεται
+# μηδέν. Αν η απάντηση είναι ακαθόριστη, τότε η ερώτσηση
+# επαναλαμβάνεται μέχρι να πάρουμε δεκτή απάντηση.
+#
+
+function cht_yesno(prompt, dflt,			resp) {
+	if (ENVIRON["CHT_AMGR_SPF"]) {
+		prompt = "\r" substr(cht_total_line[" "], 1, 79) \
+			"\r" prompt
+		system("stty sane </dev/tty")
+	}
+
+	while (1) {
+		printf prompt " " >"/dev/tty"
+		if (dflt)
+			printf "[" dflt "] " >"/dev/tty"
+
+		getline resp <"/dev/tty"
+		if (resp ~ /^[ \t]*$/)
+			resp = dflt
+
+		if (resp ~ /^[YyΝν]/)
+			return(1)
+
+		if (resp ~ /^[NnΟοΌό]/)
+			return(0)
+
+		print "Invalid response. Respond [Y]es/[N]o" >"/dev/tty"
+	}
+}

@@ -1,0 +1,814 @@
+#!/bin/sh
+#
+#	@(#) chtawk.sh 18/09/2006
+#
+#	Copyright (C) 2006 root
+#		All Rights Reserved.
+#
+# Το πρόγραμμα χρησιμοποιείται είτε για γρήγορη κλήση του awk με
+# συμπερίληψη AWK βιβλιοθηκών, είτε για ενημέρωση AWK βιβλιοθηκών.
+#
+# Updating (Compiling) Libraries
+# ------------------------------
+# Οι AWK βιβλιοθήκες, ως γνωστόν, δεν χρειάζονται κάποιου είδους
+# compilation, αλλά καλό είναι να έχουμε κάπου το source και κάπου
+# αλλού ένα αντίγραφο της βιβλιοθήκης, καθώς αν κάνουμε διορθώσεις
+# μπορεί να χαλάσουμε τη βιβλιοθήκη την ώρα που αυτή είναι σε χρήση.
+# Επομένως, ακολουθούμε την εξής διαδικασία: Ενημερώνουμε το source
+# της βιβλιοθήκης το οποίο έχουμε ονομάσει με παρέκταμα `.src' και
+# όταν τελειώσουμε τις διορθώσεις τρέχουμε chtawk -u για την εν λόγω
+# βιβλιοθήκη. Παρεμπιπτόντως, κατά τη φάση της ενημέρωσης, απαλείφονται
+# τα περισσότερα σχόλια και οι κενές γραμμές από τη runtime βιβλιοθήκη.
+#
+# Runtime Mode
+# ------------
+# Αν καλούμε το πρόγραμμα ως συντομογραφία του awk (runtime mode),
+# τότε συμπεριλαμβάνονται κατά σειρά η standard βιβλιοθήκη (std.awk
+# και sql.awk) και, εφόσον έχει δοθεί η option -l, συμπεριλαμβάνονται
+# επίσης και οι βιβλιοθήκες που αφορούν στις τρέχουσες
+# εφαρμογές (μεταβλητή `CHT_USEDB')· οι runtime βιβλιοθήκες των
+# εφαρμογών έχουν όνομα `awklib' και βρίσκονται στο `lib' directory
+# της κάθε εφαρμογής. Μπορούμε να συμπεριλάβουμε βιβλιοθήκες
+# συγκεκριμένων εφαρμογών με χρήση της option -S, π.χ.
+#
+#     chtawk -S prosop -S esex...
+#
+# Μπορούμε, ακόμη, να συμπεριλάβουμε βιβλιοθήκες εφαρμογών δίνοντας
+# ειδικά directives μέσα στο awk κώδικα, π.χ.
+#
+#	#@ prosop generic
+#	#@ pirin
+#	BEGIN {
+#	...
+#
+# Οποιεσδήποτε άλλες βιβλιοθήκες συμπεριλαμβάνονται κατά τα γνωστά
+# με την option -f, ενώ τα on-the-fly scripts δίνονται με την
+# option -s. Οι μεταβλητές δίνονται κανονικά με την option -v (για
+# αριθμητικές μεταβλητές χρησιμοποιούμε την option -n), ενώ
+# στο τέλος προστίθεται cleanup κώδικας ώστε να μη χρειάζεται σε όλα
+# τα scripts να συμπεριλαμβάνεται η `cht_cleanup()' στο END section.
+# Ως default field separator (FS) τίθεται το pipe symbol (|), αλλά
+# μπορούμε να το αλλάξουμε με την -F option. Ένα σημείο που χρειάζεται
+# ιδιαίτερη προσοχή είναι οι μεταβλητές που σκοπεύουμε να τις
+# χειριστούμε αριθμητικά: αυτές οι μεταβλητές θα πρέπει είτε να
+# επανατεθούν στο BEGIN section (var = var + 0) είτε να τις δώσουμε
+# με την option -n, π.χ. -n cnt=10, αντί -v cnt=10.
+#
+# Ως ισοδύναμη της -f παρέχεται και η option -r με μόνη διαφορά ότι
+# το script που καθορίζεται με την -r διαγράφεται μετά το τέλος του
+# προγράμματος· συνήθως χρησιμοποιείται μέσα από shell scripts στα
+# οποία κάνουμε exec τον chtawk, αλλιώς τρέχουμε με την -f και
+# κατόπιν κάνουμε remove το temporary script ή αφήνουμε την cleanup
+# (του shell script) να καθαρίσει το file.
+#
+# Το πρόγραμμα λειτουργεί ως SQL server με χρήση της option -Q. Όταν
+# δίνεται η option -Q πρέπει να δοθεί και μια παράμετρος η οποία
+# αγνοείται από το πρόγραμμα αλλά είναι χρήσιμη εφόσον περιέχεται στο
+# command line και βοηθάει έτσι στο διαχωρισμό των διαφόρων SQL servers
+# που ανοίγουν μέσα από τα awk scripts. Όταν μιλάμε για SQL server
+# ουσιαστικά μιλάμε για τον SQL με την option -q.
+#
+# Παρόμοια με την -Q είναι η option -P με την οποία ξεκινάμε chtawk
+# pipe processes μέσα από awk scripts χωρίς να βασιζόμαστε στη λογική
+# του awk ο οποίος χειρίζεται τα pipes σύμφωνα με τα αντίστοιχα
+# command lines με τα οποία τα ξεκινάμε. Ό,τι υπάρχει μετά την
+# option -Q και το pipe-id που ακολουθεί θεωρείται pipe command
+# line και ξεκινά έχοντας όμως ως όνομα το αρχικό command line
+# στο οποίο περιέχεται το pipe-id, οπότε μπορούμε να τρέξουμε
+# δύο και περισσότερες φορές το ίδιο command με διαφορετικά pipe-ids.
+#
+# Με τις options -p και -a μπορούμε να δηλώσουμε post και pre
+# data processing. Πιο συγκεκριμένα, με την option -p καθορίζουμε
+# post-processor command line, ενώ με την option -a (ante) καθορίζουμε
+# pre-processor command line ο οποίος θα διαχειριστεί το input stream
+# πριν αυτό περάσει στον chtawk. Διατίθεται επίσης και η option -A
+# με την οποία καθορίζουμε pre-processor command line με τον οποίο
+# όμως δεν διαχειριζόμαστε το input αλλά το παράγουμε.
+#
+# Τέλος, διατίθενται οι options εμπλουτισμού -e, και -E. Με την
+# option -e καθορίζουμε χαλαρές λίστες εμπλουτισμού, ενώ με την
+# option -E καθορίζουμε αυστηρές λίστες εμπλουτισμού. Στις αυστηρές
+# λίστες, έχουμε απόρριψη του record εφόσον δεν βρεθεί record
+# εμπλουτισμού, ενώ στις χαλαρές λίστες έχω εμπλουτισμό με κενά πεδία
+# εφόσον δεν βρεθεί κάποιο record εμπλουτισμού.
+#
+# Σημειώσεις
+# ----------
+# Με την option -m μπορούμε να καθορίσουμε monitor file στο οποίο
+# καταγράφονται μηνύματα με τη function `cht_monitor', ενώ με την
+# option -M ακυρώνουμε το monitor. Η option -D είναι χρήσιμη για
+# έλεγχο των βιβλιοθηκών όσον αφορά σε μεταβλητές που παραβλέψαμε
+# να δηλώσουμε ως function arguments (local), ενώ με την option
+# -d μπορούμε να ελέγξουμε τις SQL commands που απευθύνονται προς
+# τους SQL servers (function `cht_sql_exec').
+#
+# Για να δούμε ποιά version του awk χρησιμοποιούμε δίνουμε:
+#
+#	awk --version
+#
+
+caller="${cht_progname}"
+. set_progname
+[ -n "${caller}" ] && cht_progname="${caller}"
+unset caller
+usage_msg="[-u] [-o] [-U] [-V] [-c] [libraries...]
+       ${progname} [-u] [-o] [-U] -O output [sources...]
+       ${progname} [-C] [sources...]
+       ${progname} [options] [files...]
+       ${progname} -w applications...
+       ${progname} -W libraries...
+       ${progname} -Q id
+       ${progname} -P id { pipe_command_line }
+
+Options
+-------
+-h (full options list)"
+options="-s command (on-the-fly awk script)
+-f script (awk script)
+-r script (temporary awk script)
+-S schema (library inclusion)
+-l (include \`CHT_USEDB' libraries)
+-R (include report standard library)
+-t (tpm post format)
+-T (tpm post format, also run tpm postprocessor)
+-N (include staticstics library)
+-m file (monitor file specification)
+-M (disable monitor)
+-d file (SQL debug log file)
+-D file (awk variables log file)
+-e elist (εμπλουτισμός)
+-E elist (εμπλουτισμός με μηνύματα λάθους)
+-F separator (input field separator, default pipe)
+-v var=val (string variable specification)
+-n var=val (numeric variable specification)
+-a command (preprocessor command specification)
+-A command (preprocessor command specification, no input)
+-p command (postprocessor command specification)
+-g (disable pager)
+-G (enable pager)
+-X (disable preprocessor, postprocessor and pager)
+-L file (profile specification)
+-k number (skip input fields)
+
+Compiler Options
+----------------
+-c (check code)
+-u (update object)
+-o (overwrite object)
+-U (update and overwrite object)
+-C (compile)
+-b (do not include standard libraries (std, sql))
+-V (verbose on)"
+
+awk_dir=/cht/lib/awk
+update=
+overwrite=
+output=
+. verbose_monitor
+verbose=yes
+application=
+newer_complain=yes
+rptlib=
+rpt=
+stats=
+tpm=0
+program=
+sql=
+sep="|"
+monitor=
+check_code=yes
+ante=
+self_feed=
+post=
+profile=
+awk=awk
+ebl_id=0
+ebl=
+skp=
+sql_debug=
+dump_var=
+if [ -n "${CHT_AWKPAGER}" ]; then
+	pager=
+else
+	pager="/cht/bin/p"
+fi
+compiler=
+stdlibs=yes
+
+tmp1=/local/tmp/$$S${USER}1
+tmp2=/local/tmp/$$S${USER}2
+tmp3=/local/tmp/$$S${USER}3
+tmp4=/local/tmp/$$S${USER}4
+cleanup() {
+	rm -f ${tmp1} ${tmp2} ${tmp3} ${tmp4}
+	case $# in
+	1)
+		exit ${1}
+		;;
+	0)
+		;;
+	*)
+		echo "${progname}: cleanup error" >&2
+		exit 2
+		;;
+	esac
+}
+trap "cleanup 2" 1 2 3 15
+
+echo "BEGIN{" >${tmp1}		# BEGIN code
+>${tmp2}			# -s/-f code
+>${tmp3}			# βιβλιοθήκες μέσω -S και `#@' (1)
+>${tmp4}			# βιβλιοθήκες μέσω -S και `#@' (2)
+error=				# no option errors
+
+# Η function `squeeze' δέχεται ως παραμέτρους awk source files, και
+# παράγει awk object κώδικα. Πρόκειται για awk κώδικα με απαλειφή
+# "λευκών" χαρακτήρων και σχολίων. Υπενθυμίζουμε ότι τα σχόλια
+# δίνονται είτε με `#' είτε με `//'. Οι εντολές `art_directives' είναι
+# επιπλέον εντολές που εκτελούνται μόνο όταν έχει δοθεί implicit
+# "compilation" μέσα από τον `chtawkrpt' compiler· αυτές οι εντολές
+# ενεργοποιούνται όταν δοθεί η option -C περισσότερες από μία φορές
+# π.χ. chtawk -CC ...
+#
+# Εξάλλου, όταν τρέχει το πρόγραμμα εκτός `chtawkrpt', directives
+# της μορφής `#@ applications...' πρέπει να μεταφράζονται σε
+# συμπερίληψη των αντίστοιχων βιβλιοθηκών.
+
+squeeze() {
+	if [ -n "${rpt}" ]; then
+		ask_directives=
+	else
+		ask_directives="
+	/#@/w${tmp4}"
+	fi
+
+	sed 's/^[ \t]*//'"${ask_directives}"'
+/^#/d
+/^\/\//d
+s/#[^"/]*$//
+s/[^\\]\/\/[^"]*$/&/
+s/./&/
+s/.*//
+s///
+s/[ \t]*$//
+/^$/d'"${art_directives}" "$@" || return 2
+	[ -s ${tmp4} ] && cat ${tmp4} >>${tmp3}
+	>${tmp4}
+	return 0
+}
+
+# Η function `add_path' χρησιμοποιείται για να προσθέσουμε κώδικα
+# από script (option -f) με χρήση της `CHT_AWKPATH' environment
+# variable.
+
+add_path() {
+	for i in `awk -v script="${1}" 'BEGIN {
+	if (ENVIRON["CHT_AWKPATH"] == "") {
+		print script
+		exit(0)
+	}
+
+	n = split(ENVIRON["CHT_AWKPATH"], dir, ":")
+	for (i = 1; i <= n; i++)
+		print (dir[i] == "" ? "." : dir[i]) "/" script
+
+	exit(0)
+}'`; do
+		[ -r "${i}" ] && {
+			squeeze "${i}" >>${tmp2}
+			return $?
+		}
+	done
+
+	echo "${cht_progname}: ${1}: cannot read" >&2
+	return 1
+}
+
+# Η function `add_source' χρησιμοποιείται για να προσθέσουμε κώδικα
+# από script (options -f και -r). Χρησιμοποιείται επίσης κατά τον
+# εμπλουτισμό του output για να εμφυτεύσουμε κώδικα εμπλουτισμού.
+
+add_source() {
+	[ -r "${1}" ] || {
+		echo "${cht_progname}: ${1}: cannot read" >&2
+		return 1
+	}
+
+	squeeze "${1}" >>${tmp2}
+	return $?
+}
+
+while getopts ":v:n:f:r:s:e:E:lRNtTa:A:p:XL:F:S:wWzm:\
+MQPuoUO:cVCd:D:gGk:bh" arg
+do
+	case "${arg}" in
+	v)
+		echo "${OPTARG}" | tr '\n' '' | sed 's;=;=";
+s;;\\n;g
+s;..$;";
+a
+' >>${tmp1}
+		;;
+	n)
+		echo "${OPTARG} + 0" >>${tmp1}
+		;;
+	s)
+		echo "${OPTARG}" | squeeze >>${tmp2}
+		program=yes
+		;;
+	f)
+		case "${OPTARG}" in
+		/*)
+			add_source "${OPTARG}"
+			;;
+		*)
+			add_path "${OPTARG}"
+			;;
+		esac || error=yes
+		program=yes
+		;;
+	r)
+		add_source "${OPTARG}" || error=yes
+		rm -f "${OPTARG}"
+		program=yes
+		;;
+	l)
+		echo "${CHT_USEDB}" >>${tmp3}
+		;;
+	R)
+		rptlib="-f${awk_dir}/rptlib.awk"
+		rpt=yes
+		;;
+	N)
+		stats="-f${awk_dir}/stats.awk"
+		;;
+	e|E)
+		ebl_id=`expr ${ebl_id} + 1`
+		echo "BEGIN{cht_ebl_install(\"${OPTARG}\",${ebl_id},\
+\"${arg}\")}{if(cht_ebl_exec(${ebl_id}))next}" >>${tmp2}
+		program=
+		;;
+	t)
+		tpm=1
+		;;
+	T)
+		tpm=2
+		;;
+	a)
+		ante="${OPTARG}"
+		;;
+	A)
+		ante="${OPTARG}"
+		self_feed=yes
+		;;
+	p)
+		post="${OPTARG}"
+		;;
+	X)
+		ante=
+		post=
+		pager=
+		;;
+	L)
+		profile="--profile=${OPTARG}"
+		awk=pgawk
+		;;
+	F)
+		sep="${OPTARG}"
+		;;
+	S)
+		echo "${OPTARG}" >>${tmp3}
+		;;
+	w)
+		application=a
+		;;
+	W)
+		application=l
+		;;
+	z)
+		newer_complain=
+		;;
+	m)
+		if chtfck -p "${cht_progname}" -n ${OPTARG}; then
+			monitor=${OPTARG}
+		else
+			error=yes
+		fi
+		;;
+	M)
+		monitor="/dev/null"
+		;;
+	Q)
+		sql=yes
+		;;
+	P)
+		shift `expr ${OPTIND} - 1`
+		[ $# -lt 2 ] && errs=yes
+		[ -n "${errs}" ] && usage
+		shift
+		cleanup
+		exec "$@"
+		;;
+	u)
+		update=yes
+		;;
+	o)
+		overwrite=yes
+		;;
+	U)
+		update=yes
+		overwrite=yes
+		;;
+	O)
+		output="${OPTARG}"
+		;;
+	c)
+		check_code=
+		;;
+	V)
+		verbose=
+		;;
+	C)	# Αν δοθεί δύο φορές η option -C, τότε έχω implicit
+		# compilation μέσα από τον `chtawkrpt'. Σ'αυτήν την
+		# περίπτωση προστίθεται ακόμη μια εντολή στο default
+		# sed script που εκτελεί το "compilation".
+
+		[ -n "${compiler}" ] && art_directives="
+s;^%;#@;"
+		compiler=yes
+		;;
+	d)
+		if chtfck -p "${cht_progname}" -n "${OPTARG}"; then
+			sql_debug="${OPTARG}"
+		else
+			error=yes
+		fi
+		;;
+	D)
+		if chtfck -p "${cht_progname}" -n ${OPTARG}; then
+			dump_var="--dump-variables=${OPTARG}"
+		else
+			error=yes
+		fi
+		;;
+	g)
+		pager=
+		;;
+	G)
+		pager="/cht/bin/p"
+		;;
+	k)
+		if chtnumck -m0 -M100 "${OPTARG}" >/dev/null 2>&1; then
+			echo "cht_skip=\"${OPTARG}\"" >>${tmp1}
+			skp="-f${awk_dir}/skp.awk"
+		else
+			errs=yes
+		fi
+		;;
+	h)
+		echo "usage: ${progname} ${usage_msg}
+${options}" | /cht/bin/p
+		exit 0
+		;;
+	b)
+		# Να μην συμπεριληφθούν οι standard βιβλιοθήκες.
+		# Χρειάζεται, συνήθως, κατά το compilation αυτών
+		# των βιβλιοθηκών.
+		stdlibs=
+		;;
+	\?)
+		. illegal_option
+		errs=yes
+		;;
+	esac
+	[ -n "${errs}" ] && break
+done
+[ -n "${pipe}" ] && errs=yes
+. shift_opts
+[ -n "${error}" ] && cleanup 2
+
+# Ελέγχουμε αν έχει δοθεί η option -Q οπότε καλούμε τον chtawk ως
+# SQL server. Πρόκειται για SQL με την option -q. Αφού θέσυμε όλους
+# τους null χαρακτήρες σεν κενά, απλώς κάνουμε exec τον SQL.
+
+if [ -n "${sql}" ]; then
+	cleanup
+	[ $# -ne 1 ] && usage
+
+	# Θέτουμε τον null character σε κενό για όλα
+	# τα data types πεδίων της database. Αυτό
+	# είναι απαραίτητο για τη σωστή λειτουργία
+	# των awk/SQL functions.
+
+	NUMNULLCH= export NUMNULLCH
+	AMTNULLCH= export AMTNULLCH
+	FLTNULLCH= export FLTNULLCH
+	DATNULLCH= export DATNULLCH
+	STRNULLCH= export STRNULLCH
+	TIMNULLCH= export TIMNULLCH
+	TXTNULLCH= export TXTNULLCH
+	BYTNULLCH= export BYTNULLCH
+	NULLCH= export NULLCH
+	exec SQL -q
+fi
+
+if [ -n "${compiler}" ]; then
+	squeeze $* || cleanup $?
+	[ -s ${tmp3} ] && cat ${tmp3}
+	cleanup 0
+fi
+
+if [ -n "${application}" ]; then
+	cleanup
+	[ $# -lt 1 ] && exit 0
+	[ -t 0 ] || errs=yes
+	[ -t 1 ] || errs=yes
+	[ -t 2 ] || errs=yes
+	[ -n "${errs}" ] && {
+		echo "${progname}: no control terminal" >&2
+		exit 2
+	}
+
+	if [ -z "${check_code}" ]; then
+		check_code=c
+	else
+		unset check_code
+	fi
+
+	for i in $*; do
+		if [ "${application}" == l ]; then
+			lib="/cht/lib/awk/${i}.awk.src"
+			if [ ! -r "${lib}" ]; then
+				echo "${i}: library not found" >&2
+				continue
+			fi
+		elif [ ! -d "/cht/apps/${i}" ]; then
+			echo "${i}: application not found" >&2
+			continue
+		else
+			lib="/cht/apps/${i}/lib/awklib.src"
+		fi
+
+		while [ -z "${errs}" ]; do
+			vi "${lib}"
+			[ -s "${lib}" ] || break
+			chtawk -uVz${check_code} "${lib}" 2>${tmp1}
+			[ ! -s ${tmp1} ] && break
+			p ${tmp1}
+			errs=yes
+			chtyesno -y "Re-edit" && errs=
+		done
+	done
+	exit 0
+fi
+
+# Θέτουμε την gawk option `re-interval' ώστε στα regular expressions
+# να συμπεριλαμβάνονται και expressions της μορφής r{n[,m]}. Αυτές
+# οι regular expressions δεν αναγνωρίζονται by default.
+
+std_opts="--re-interval"
+
+# Η μεταβλητή `libs' περιέχει τις βιβλιοθήκες που συμπεριλαμβάνονται
+# by default. Αυτές είναι οι "std" και "sql". Κατά τη φάση του
+# compilation υπάρχει περίπτωση να μην θέλω τη συμπερίληψη, καθώς
+# μπορεί να ενημερώνω μια από αυτές τις βιβλιοθήκες. Εκεί χρειάζεται
+# η option "-b" η οποία δηλώνει μη συμπερίληψη αυτών των βιβλιοθηκών.
+
+libs=
+if [ -n "${stdlibs}" ]; then
+	for lib in std sql
+	do
+		[ -r ${awk_dir}/${lib}.awk ] && \
+			libs="${libs} -f${awk_dir}/${lib}.awk"
+	done
+	unset lib
+fi
+
+# Αν δεν είχαμε options -u, -U ή είχαμε options εκτός των -u, -U, -o
+# και -V, τότε δεν είμαστε σε mode ενημέρωσης AWK βιβλιοθήκης, αλλά
+# απλά τρέχουμε τον awk με την standard βιβλιοθήκη (`std' και `sql'),
+# και, εφόσον έχει δοθεί η option -l, τις AWK βιβλιοθήκες που υπάρχουν
+# για τις τρέχουσες εφαρμογές (μεταβλητή `CHT_USEDB'). Σαν flag
+# χρησιμοποιούμε τη flag `update' που δείχνει αν είμαστε σε φάση
+# ενημέρωσης βιβλιοθήκης. Ακολουθεί λοιπόν το runtime mode.
+
+if [ -z "${update}" ]; then
+	# Εδώ γίνεται η συμπερίληψη των applications' libraries.
+	# Υπενθυμίζουμε ότι οι applications libraries δίνονται
+	# είτε στο command line με την option `-S', είτε μέσω
+	# τής environment_library `CHT_USEDB' σε συνδυασμό με
+	# την option `-l', είτε μέσα στον awk κώδικα με directives
+	# τής μορφής `#@ applications...'. Όλα τα παραπάνω έχουν
+	# ήδη "μαζευτεί" στο προωρινό file `tmp3' και τώρα θα
+	# αποσπάσουμε μέσα από αυτό το file τις applications'
+	# libraries τις οποίες και θα δώσουμε στο command line
+	# ως `-f' awk program files.
+
+	if [ -s ${tmp3} ]; then
+		for lib in `awk '{
+	sub(".*#@", "")
+	if ($0 ~ /"/)
+		next
+
+	sub("(#|//).*", "")
+	for (i = 1; i <= NF; i++)
+		lib[($i ~ /^\// ? $i : "/cht/apps/" $i "/lib/awklib")]
+}
+END {
+	for (i in lib)
+		print i
+}' ${tmp3}`
+		do
+			if [ -r ${lib} ]; then
+				libs="${libs} -f${lib}"
+			else
+				echo "${progname}: ${lib}: \
+cannot read" >&2
+				errs=yes
+			fi
+		done
+	fi
+	[ -n "${errs}" ] && exit 2
+
+	if [ \( -t 0 \) -a \( $# -lt 1 \) ]; \
+		then tty0=1; else tty0=0; fi
+	if [ -t 1 ]; then tty1=1; else tty1=0; fi
+	if [ -t 2 ]; then tty2=1; else tty2=0; fi
+
+	echo "FS=\"${sep}\"
+cht_isatty_list=\"${tty0}:${tty1}:${tty2}\"
+cht_monitor_file=\"${monitor}\"
+cht_sql_debug=\"${sql_debug}\"
+cht_tpm=${tpm}
+}" >>${tmp1}
+
+	if [ -n "${rpt}" ]; then
+		program=yes
+		cat ${awk_dir}/rpt.awk >>${tmp2} || cleanup 2
+	fi
+
+	if [ ${ebl_id} -gt 0 ]; then
+		echo "BEGIN{cht_ebl_check()
+cht_abort(cht_ebl_error, \"elist errors encountered\")}" >>${tmp2}
+		ebl="-f${awk_dir}/ebl.awk"
+	fi
+
+	[ -z "${program}" ] && echo "BEGIN{OFS=FS}{print}" >>${tmp2}
+	echo "END{cht_cleanup()}" >>${tmp2}
+	if [ ${tpm} -eq 2 ]; then
+		if [ -n "${post}" ]; then
+			post="tpm|${post}"
+		else
+			post=tpm
+		fi
+	fi
+
+	# Αν το output είναι τερματικό και δεν έχω ακυρώσει το
+	# default paging (option -g) θέτω ως τελευταίο βήμα στο
+	# όποιο post processing τον pager `p'.
+
+	if [ \( -t 1 \) -a \( -n "${pager}" \) ]; then
+		if [ -t 0 ]; then
+			if [ $# -le 0 ]; then
+				errs=yes
+			else
+				for i in "$@"
+				do
+					if [ "${i}" == "-" ]; then
+						errs=yes
+						break
+					fi
+				done
+			fi
+
+			if [ -n "${errs}" ]; then
+				pager="/cht/bin/chtpcap"
+				errs=
+			fi
+		fi
+				
+		if [ -n "${post}" ]; then
+			post="${post}|${pager}"
+		else
+			post="${pager}"
+		fi
+	fi
+
+	unset program ebl_id squeeze add_path add_source \
+		lib pager tty0 tty1 tty2
+	set -- ${std_opts} ${dump_var} ${profile} \
+		-v cht_progname="${cht_progname}" -f${tmp1} ${skp} \
+		${libs} ${rptlib} ${stats} -f${tmp2} ${ebl} "$@"
+
+	# Αν δεν υπάρχουν pre ή post processors εκτελώ απευθείας
+	# τον awk με exec. Το μόνο πρόβλημα εδώ είναι η παραμονή
+	# στο `/local/tmp' των temporary files, αλλά αυτά θα
+	# διαγραφούν μέσω του cleanup daemon.
+
+	[ \( -z "${ante}" \) -a \( -z "${post}" \) ] && \
+		exec ${awk} "$@"
+
+	# Αν υπάρχει μόνο pre-processor εκτελώ το pipeline και κάνω
+	# exit με το exit status του awk (που τρέχει τελευταίος).
+
+	if [ -z "${post}" ]; then
+		eval ${ante} | ${awk} "$@"
+		cleanup $?
+	fi
+
+	# Υπάρχει post-processor και τίθεται το πρόβλημα εξόδου με
+	# το σωστό exit status, δηλαδή του exit status του awk.
+	# Θέτουμε την bash option `pipefail' ώστε σε περίπτωση που
+	# ο awk αποτύχει να πάρω το σωστό exit status και όχι του
+	# post processor (που πιθανότατα θα είναι μηδενικό). Βέβαια,
+	# αν αποτύχει κάποιο από τα components του post-processor
+	# pipeline, θα πάρω αυτό το exit status αντί του awk, αλλά
+	# αυτό δεν είναι λάθος.
+
+	set -o pipefail
+	if [ -n "${ante}" ]; then
+		eval ${ante} | ${awk} "$@" | eval ${post}
+	else
+		${awk} "$@" | eval ${post}
+	fi 
+	cleanup $?
+fi
+
+# Είμαστε σε φάση ενημέρωσης βιβλιοθήκης (compilation mode).
+# Δεν γίνεται κάποιο πραγματικό compilation, απλά απαλείφονται
+# "λευκοί" χαρακτήρες και σχόλια. Τα files που δίνονται ως
+# command line arguments είναι sources από awk βιβλιοθήκες και
+# πρέπει να έχουν παρέκταμα `.src', ενώ τα παραγόμενα awk scripts
+# (objects) φέρουν το ίδιο όνομα χωρίς το παρέκταμα `.src'. Αν
+# έχει καθοριστεί output με την option -o, τότε όλα τα sources
+# διαβάζονται ως ένα και δημιουργείται ένα object file· σ'αυτήν
+# την περίπτωση δεν λογίζεται το παρέκταμα `.src'.
+
+cleanup
+[ $# -lt 1 ] && exit 0
+errs=0
+
+compile() {
+	[ $# -lt 1 ] && return 1
+	squeeze "$@"
+	return $?
+}
+
+if [ -n "${output}" ]; then
+	[ -z "${overwrite}" ] && { chtfck -n "${output}" || exit 2; }
+	cat $* >${tmp1} || cleanup 2
+
+	if [ -n "${check_code}" ]; then
+		monitor "Checking \`$*' AWK source..."
+		awk ${std_opts} ${libs} -f${tmp1} /dev/null || {
+			echo "${progname}: errors encountered" >&2
+			cleanup 2
+		}
+	fi
+
+	monitor "Updating \`${output}' target..."
+	compile ${tmp1} >${tmp2} || cleanup 2
+	mv ${tmp2} "${output}" || cleanup 2
+	[ -s ${tmp3} ] && cat ${tmp3} >>"${output}"
+	cleanup $?
+fi
+
+for i in $*
+do
+	lib="`echo ${i} | sed 's;\.src$;;'`"
+	source="${lib}.src"
+	monitor "Processing \`${lib}' AWK program/library..."
+
+	[ -r ${source} ] || {
+		echo "${progname}: ${source}: cannot read" >&2
+		errs=2
+		continue
+	}
+
+	[ -z "${overwrite}" ] && chtnewer -s "${lib}" "${source}" && {
+		[ -n "${newer_complain}" ] && echo "${progname}: \
+${source}: source file untouched" >&2
+		continue
+	}
+
+	if [ -n "${check_code}" ]; then
+		monitor "Checking \`${source}' AWK source..."
+		awk ${std_opts} ${libs} -f"${source}" /dev/null || {
+			echo "${progname}: ${source}: \
+	errors encountered (\`${lib}' untouched)" >&2
+			errs=2
+			continue
+		}
+	fi
+
+	monitor "Updating \`${lib}' AWK program/library..."
+	compile ${source} >"${lib}" || { errs=2; continue; }
+	if [ -s ${tmp3} ]; then
+		cat ${tmp3} >>"${lib}" || errs=2
+		>${tmp3}
+	fi
+
+	chgrp chtdev "${lib}" 2>/dev/null
+	chmod 664 "${lib}" 2>/dev/null
+done
+exit ${errs}

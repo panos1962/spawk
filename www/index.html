@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<title>SPAWK</title>
+<link rel="icon" type="image/png" href="image/icon/spawk70x70.png">
+<link rel="stylesheet" href="lib/standard.css">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+
+<style>
+pre {
+	font-size: 1em;
+	background-color: transparent;
+	border-style: none;
+}
+#title {
+	margin: 10px 20px;
+	font-size: 2em;
+	font-weight: bold;
+}
+#legend {
+	margin: 10px 20px;
+	font-style: italic;
+}
+#example {
+	position: relative;
+	margin: 0 0 0 10px;
+	color: #675d0c;
+	text-shadow: 0px 1px 0px #807000;
+	opacity: 0.5;
+}
+#spock {
+	position: absolute;
+	top: 0;
+	left: 0;
+}
+#spockImage {
+	position: absolute;
+	top: 0;
+	left: 0;
+	height: 100%;
+}
+#bottom {
+	position: absolute;
+	bottom: 0px;
+	right: 0px;
+	width: 100%;
+}
+</style>
+
+<script>
+SPAWK = {};
+$(document).ready(function() {
+	SPAWK.spockDOM = $('#spock');
+	SPAWK.exampleDOM = $('#example');
+	SPAWK.wowDOM = $('#wow');
+
+	SPAWK.spockDOM = $('<div>').attr('id', 'spock').css({
+		top: SPAWK.exampleDOM.position().top + 'px',
+		width: SPAWK.exampleDOM.width() + 'px',
+		height: SPAWK.exampleDOM.height() + 'px',
+	}).append($('<img>').attr({
+		id: 'spockImage',
+		src: 'image/misc/spock512.png',
+	})).insertBefore(SPAWK.exampleDOM);
+
+	exampleHeight = SPAWK.exampleDOM.height();
+	SPAWK.exampleDOM.on('mouseenter', function() {
+		SPAWK.spockDOM.finish().fadeTo(200, 0.2);
+		SPAWK.exampleDOM.finish().fadeTo(100, 1.0);
+		SPAWK.wowDOM.text('Wow!');
+	});
+
+	SPAWK.exampleDOM.on('mouseleave', function() {
+		SPAWK.spockDOM.finish().fadeTo(500, 1.0);
+		SPAWK.exampleDOM.finish().fadeTo(100, 0.5);
+		SPAWK.wowDOM.text('Interested?');
+	});
+});
+
+</script>
+
+</head>
+
+<body>
+
+<div id="top">
+<div class="tab"><a id="wow" href="spawk.php" target="_self"
+	title="Find out more">Interested?</a></div>
+</div>
+
+<div id="title">
+SPAWK &ndash; SQL Powered AWK
+</div>
+
+<div id="example">
+<pre><code>@load "spawk"
+
+BEGIN {
+	spawk_sesami["dbuser"] = "chat"
+	spawk_sesami["dbpassword"] = "xxx"
+	spawk_sesami["dbname"] = "chat"
+}
+
+{
+	spawk_submit("SELECT `login`, `name` FROM `user` WHERE `login` LIKE " spawk_escape($0))
+
+	while (spawk_fetchrow(user))
+	process_user(user)
+}
+
+function process_user(user,		relation) {
+	print user[0]
+
+	spawk_submit("SELECT `related`, `relationship` FROM `relation` WHERE `user` = " spawk_escape(user[1]))
+
+	while (spawk_fetchrow(relation))
+	print "\t" relation[0]
+}
+</code></pre>
+</div>
+
+<div id="legend">
+AWK talking SQL to MySQL/MariaDB databases
+</div>
+
+<div id="bottom">
+<div id="copyright">Copyright &copy; 2004-2017, by Panos I. Papadopoulos. All rights reserved.</div>
+</div>
+
+</body>
+
+</html>
