@@ -26,7 +26,7 @@ class Globals {
 
 		self::$server = (isset($_SERVER['SERVER_PORT']) &&
 			($_SERVER['SERVER_PORT'] == 443)) ?
-			"https" : "http" . $url);
+			"https" : "http") . $url;
 	}
 
 	public static function url($x) {
