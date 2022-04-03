@@ -23,6 +23,13 @@ class Globals {
 			print $_SERVER["HTTP_HOST"] . ": unknown server";
 			die(2);
 		}
+
+		if (isset($_SERVER['SERVER_PORT']) &&
+			($_SERVER['SERVER_PORT'] == 443)) {
+			header("Location: " . self::$server);
+			exit(0);
+		}
+		
 	}
 
 	public static function url($x) {
