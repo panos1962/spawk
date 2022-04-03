@@ -24,7 +24,7 @@ class Globals {
 			die(2);
 		}
 
-		self::$server = (isset($_SERVER['SERVER_PORT']) &&
+		self::$server = ((isset($_SERVER['SERVER_PORT']) &&
 			($_SERVER['SERVER_PORT'] == 443)) ?
 			"https" : "http") . $url;
 	}
