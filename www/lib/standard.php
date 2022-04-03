@@ -11,9 +11,11 @@ class Globals {
 		case "localhost":
 			self::$server = "http://localhost/spawk.info/";
 			break;
-		case "www.spawk.info":
-			self::$server = "http://www.spawk.info/";
+		case "opasopa.net":
+		case "www.opasopa.net":
+			self::$server = "http://opasopa.net/spawk/";
 			break;
+		case "www.spawk.info":
 		case "spawk.info":
 			self::$server = "http://spawk.info/";
 			break;
