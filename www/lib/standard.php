@@ -9,26 +9,24 @@ class Globals {
 		switch ($_SERVER["HTTP_HOST"]) {
 		case "127.0.0.1":
 		case "localhost":
-			self::$server = "http://localhost/spawk.info/";
+			$url = "://localhost/spawk.info/";
 			break;
 		case "opasopa.net":
 		case "www.opasopa.net":
-			self::$server = "http://opasopa.net/spawk/";
+			$url = "://opasopa.net/spawk/";
 			break;
 		case "www.spawk.info":
 		case "spawk.info":
-			self::$server = "http://spawk.info/";
+			$url = "://spawk.info/";
 			break;
 		default:
 			print $_SERVER["HTTP_HOST"] . ": unknown server";
 			die(2);
 		}
 
-		if (isset($_SERVER['SERVER_PORT']) &&
-			($_SERVER['SERVER_PORT'] == 443)) {
-			header("Location: " . self::$server);
-			exit(0);
-		}
+		self::$server = (isset($_SERVER['SERVER_PORT']) &&
+			($_SERVER['SERVER_PORT'] == 443)) ?
+			"https" : "http" . $url);
 	}
 
 	public static function url($x) {
