@@ -29,7 +29,6 @@ class Globals {
 			header("Location: " . self::$server);
 			exit(0);
 		}
-		
 	}
 
 	public static function url($x) {
