@@ -594,6 +594,8 @@ static int fetchrow(const char *func, int nargs) {
 	if (!sym_lookup("spawk_null", AWK_STRING, &val))
 	fatal(ext_id, "spawk_null: undefined");
 
+	null = val.str_value.str;
+
 	if (sym_lookup("spawk_OFS", AWK_STRING, &val))
 	ofs = val.str_value.str;
 
