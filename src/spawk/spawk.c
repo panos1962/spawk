@@ -100,8 +100,10 @@ static awk_bool_t init_spawk(void) {
 	// Variable "spawk_null" is the default NULL column value
 	// representaion string (Control-N).
 
-	make_const_string("\016", 1, &val);
-	varset("spawk_init", "spawk_null", &val);
+	if (!sym_lookup("spawk_null", AWK_STRING, &val)) {
+		make_const_string("\016", 1, &val);
+		varset("spawk_init", "spawk_null", &val);
+	}
 
 	// Variable "spawk_verbose" acts as a numeric flag. Non-zero
 	// values cause error error messages to be printed to the

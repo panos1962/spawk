@@ -41,4 +41,19 @@ tar:
 $(TARBALL): $(TARFLIST)
 	@(cd .. && tar zcf spawk/$(TARBALL) --no-recursion --files-from spawk/$(TARFLIST)) && ls -l $(TARBALL)
 
+status:
+	git status
+
+diff:
+	git diff
+
+pull:
+	git pull
+
+commit:
+	git commit -m "modifications" .
+
+push:
+	git push
+
 $(NOTARGET):

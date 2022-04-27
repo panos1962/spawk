@@ -8,8 +8,8 @@ DROP DATABASE IF EXISTS `chat`
 ;
 
 CREATE DATABASE `chat`
-DEFAULT CHARSET = utf8
-DEFAULT COLLATE = utf8_general_ci
+DEFAULT CHARSET = utf8mb4
+DEFAULT COLLATE = utf8mb4_general_ci
 ;
 
 -- Select "chat" database as the default database.
@@ -132,7 +132,7 @@ ALTER TABLE `message` ADD FOREIGN KEY (
 
 -- Create user for generic DQL/DML access to "chat" database.
 
-DROP USER 'chat'@'localhost'
+DROP USER IF EXISTS 'chat'@'localhost'
 ;
 
 CREATE USER 'chat'@'localhost' IDENTIFIED BY 'xxx'
@@ -143,7 +143,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON `chat`.* TO 'chat'@'localhost'
 
 -- Create user for generic DQL access to "chatdql" database.
 
-DROP USER 'chatdql'@'localhost'
+DROP USER IF EXISTS 'chatdql'@'localhost'
 ;
 
 CREATE USER 'chatdql'@'localhost'
@@ -154,7 +154,7 @@ GRANT SELECT ON `chat`.* TO 'chatdql'@'localhost'
 
 -- Create user for DDL/DQL/DML access to "chat" database.
 
-DROP USER 'chatadmin'@'localhost'
+DROP USER IF EXISTS 'chatadmin'@'localhost'
 ;
 
 CREATE USER 'chatadmin'@'localhost' IDENTIFIED BY 'xxx'
