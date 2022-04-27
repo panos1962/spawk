@@ -97,6 +97,12 @@ static void varset(char *, char *, awk_value_t *);
 static awk_bool_t init_spawk(void) {
 	awk_value_t val;
 
+	// Variable "spawk_null" is the default NULL column value
+	// representaion string (Control-N).
+
+	make_const_string("\016", 1, &val);
+	varset("spawk_init", "spawk_null", &val);
+
 	// Variable "spawk_verbose" acts as a numeric flag. Non-zero
 	// values cause error error messages to be printed to the
 	// standard error for failed queries (default).
@@ -585,11 +591,8 @@ static int fetchrow(const char *func, int nargs) {
 	if (nconn <= 0)
 	fatal(ext_id, "%s: data shortage", func);
 
-	if (sym_lookup("spawk_null", AWK_STRING, &val))
-	null = val.str_value.str;
-
-	else
-	null = "\016";		// Control-N
+	if (!sym_lookup("spawk_null", AWK_STRING, &val))
+	fatal(ext_id, "spawk_null: undefined");
 
 	if (sym_lookup("spawk_OFS", AWK_STRING, &val))
 	ofs = val.str_value.str;
