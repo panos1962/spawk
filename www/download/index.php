@@ -51,7 +51,7 @@ cd spawk
 # Install
 sudo make uninstall
 make cleanup
-make
+make spawk
 sudo make install
 
 # Create and populate "chat" database
