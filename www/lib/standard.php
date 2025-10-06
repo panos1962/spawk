@@ -15,12 +15,19 @@ class Globals {
 		case "www.opasopa.net":
 			$url = "://opasopa.net/spawk/";
 			break;
+		case "opasopa.gr":
+		case "www.opasopa.gr":
+			$url = "://opasopa.gr/spawk/";
+			break;
 		case "www.spawk.info":
 		case "spawk.info":
 			$url = "://spawk.info/";
 			break;
 		case "spawk.opasopa.net":
 			$url = "://spawk.opasopa.net/";
+			break;
+		case "spawk.opasopa.gr":
+			$url = "://spawk.opasopa.gr/";
 			break;
 		default:
 			print $_SERVER["HTTP_HOST"] . ": unknown server";
