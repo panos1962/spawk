@@ -44,7 +44,7 @@ gawk --version
 mysql_config --version
 
 # Download
-wget spawk.info/download/spawk.tar.gz
+wget opasopa.gr/spawk/download/spawk.tar.gz
 tar zxf spawk.tar.gz
 cd spawk
 
@@ -121,7 +121,7 @@ or by hand using CLI at your terminal:
 
 <p>
 <pre>
-wget spawk.info/download/spawk.tar.gz
+wget opasopa.gr/spawk/download/spawk.tar.gz
 </pre>
 </p>
 
