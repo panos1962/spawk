@@ -44,7 +44,7 @@ gawk --version
 mysql_config --version
 
 # Download
-wget opasopa.gr/spawk/download/spawk.tar.gz
+wget <?php print Globals::url("download/spawk.tar.gz") . PHP_EOL; ?>
 tar zxf spawk.tar.gz
 cd spawk
 
@@ -121,7 +121,7 @@ or by hand using CLI at your terminal:
 
 <p>
 <pre>
-wget opasopa.gr/spawk/download/spawk.tar.gz
+wget <?php print Globals::url("download/spawk.tar.gz") . PHP_EOL; ?>
 </pre>
 </p>
 
