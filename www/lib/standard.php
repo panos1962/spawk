@@ -9,15 +9,12 @@ class Globals {
 		switch ($_SERVER["HTTP_HOST"]) {
 		case "127.0.0.1":
 		case "localhost":
-			$url = "://localhost/spawk.info/";
-			break;
 		case "opasopa.net":
 		case "www.opasopa.net":
-			$url = "://opasopa.net/spawk/";
-			break;
 		case "opasopa.gr":
 		case "www.opasopa.gr":
-			$url = "://opasopa.gr/spawk/";
+		case "142.132.231.222":
+			$url = "://" . $_SERVER["HTTP_HOST"] . "/spawk/";
 			break;
 		case "www.spawk.info":
 		case "spawk.info":
