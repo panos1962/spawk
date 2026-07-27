@@ -7,33 +7,20 @@ class Globals {
 
 	public static function setup() {
 		switch ($_SERVER["HTTP_HOST"]) {
-		case "127.0.0.1":
-		case "localhost":
-		case "opasopa.net":
-		case "www.opasopa.net":
-		case "opasopa.gr":
-		case "www.opasopa.gr":
-		case "142.132.231.222":
-			$url = "://" . $_SERVER["HTTP_HOST"] . "/spawk/";
-			break;
 		case "www.spawk.info":
 		case "spawk.info":
-			$url = "://spawk.info/";
-			break;
 		case "spawk.opasopa.net":
-			$url = "://spawk.opasopa.net/";
-			break;
 		case "spawk.opasopa.gr":
-			$url = "://spawk.opasopa.gr/";
+			$url = $_SERVER["HTTP_HOST"];
 			break;
-		default:
-			print $_SERVER["HTTP_HOST"] . ": unknown server";
-			die(2);
+		default:	// localhost, 127.0.0.1, opasopa.gr etc
+			$url = $_SERVER["HTTP_HOST"] . "/spawk";
+			break;
 		}
 
 		self::$server = ((isset($_SERVER['SERVER_PORT']) &&
 			($_SERVER['SERVER_PORT'] == 443)) ?
-			"https" : "http") . $url;
+			"https://" : "http://") . $url . "/";
 	}
 
 	public static function url($x) {
