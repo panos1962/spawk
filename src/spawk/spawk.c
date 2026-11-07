@@ -399,7 +399,8 @@ do_escape(int nargs, awk_value_t *result, struct awk_ext_func *unused) {
 	if (nargs < 1)
 	fatal(ext_id, "spawk_escape: missing argument");
 
-	get_argument(0, AWK_STRING, &sval);
+	if (!get_argument(0, AWK_STRING, &sval))
+	fatal(ext_id, "spawk_escape: invalid string passed");
 
 	quote = ((nargs > 1) && get_argument(1, AWK_STRING, &qval)) ?
 		strcmp(qval.str_value.str, "0") : 1;
