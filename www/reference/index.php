@@ -618,13 +618,14 @@ The default database to use.
 <dt><code><strong>dbhost</strong></code></dt>
 <dd>
 <p>
-The default host machine for the database server.
+The default host machine for the database server (default <code>"localhost"</code>).
 </p>
 
 <dt><code><strong>dbcharset</strong></code></dt>
 <dd>
 <p>
-The default character set to be used for the database connection, e.g. "<code>utf8</code>".
+The default character set to be used for the database connection,
+e.g. "<code>latin1</code>" (default <code>"utf8mb4"</code>).
 </p>
 </dd>
 </dl>

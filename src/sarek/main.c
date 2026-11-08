@@ -128,7 +128,7 @@
 //
 //		host		The database host name (default "localhost").
 //
-//		charset		The database character set (default "utf8").
+//		charset		The database character set (default "utf8mb4").
 //
 //		null		The string to be used for null valued fields
 //				(default SO control character, ASCII 016

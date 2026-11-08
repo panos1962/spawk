@@ -314,7 +314,7 @@ BEGIN {
 	spawk_host = "localhost"
 
 	if (!spawk_charset)
-	spawk_charset = "utf8"
+	spawk_charset = "utf8mb4"
 
 	if (!spawk_sarek)
 	spawk_sarek = "sarek"

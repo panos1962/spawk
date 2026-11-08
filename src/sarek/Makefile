@@ -10,7 +10,7 @@ strip: $(EXEC)
 	strip $(EXEC)
 
 test: $(EXEC)
-	$(EXEC) -D -u chat -p xxx -d chat -c utf8 0
+	$(EXEC) -D -u chat -p xxx -d chat -c utf8mb4 0
 
 test2: $(EXEC)
 	awk -f test2.awk

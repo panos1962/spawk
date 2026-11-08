@@ -9,7 +9,7 @@ BEGIN {
 	spawk_sesami["dbuser"] = "chat"
 	spawk_sesami["dbpassword"] = "xxx"
 	spawk_sesami["dbname"] = "chat"
-	spawk_sesami["dbcharset"] = "utf8"
+	spawk_sesami["dbcharset"] = "utf8mb4"
 
 	tab = tab ? "@" : "\t"
 	s = "Παναγιώτης" tab "Δώρα" tab "maria" tab "akis" tab "Ελευθερία" \

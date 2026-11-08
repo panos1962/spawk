@@ -120,7 +120,7 @@ static void database_connect(void) {
 	sarek_password = "";
 
 	if (!sarek_charset)
-	sarek_charset = "utf8";
+	sarek_charset = "utf8mb4";
 
 	if (sarek_debug)
 	debug_connection();

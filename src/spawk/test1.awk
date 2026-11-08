@@ -9,7 +9,7 @@ BEGIN {
 	spawk_sesami["dbuser"] = "chat"
 	spawk_sesami["dbpassword"] = "xxx"
 	spawk_sesami["dbname"] = "chat"
-	spawk_sesami["dbcharset"] = "utf8"
+	spawk_sesami["dbcharset"] = "utf8mb4"
 
 	spawk_submit("UPDATE `user` SET `name` = " spawk_escape("Παν'αγι'ώτ\nης\taaa\tbbb"))
 

@@ -510,7 +510,7 @@ static MYSQL *dbconnect(void) {
 	dbuser = NULL;
 	dbpassword = NULL;
 	dbname = NULL;
-	dbcharset = NULL;
+	dbcharset = "utf8mb4";
 
 	if (sym_lookup("spawk_sesami", AWK_ARRAY, &sesami)) {
 		make_const_string("dbhost", 6, &idx);
